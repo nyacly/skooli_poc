@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "skooli",
+  "compatibility_date": "2024-01-01",
+  "pages_build_output_dir": "./dist",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  // D1 Database configuration
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "skooli-production",
+      "database_id": "will-be-added-after-creation"
+    }
+  ],
+  
+  // KV Namespace for sessions and cache
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "will-be-added-after-creation",
+      "preview_id": "will-be-added-after-creation"
+    }
+  ]
+}
