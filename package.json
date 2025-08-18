@@ -17,9 +17,15 @@
     "test": "curl http://localhost:3000"
   },
   "dependencies": {
+    "@paypal/checkout-server-sdk": "^1.0.3",
     "bcryptjs": "^2.4.3",
     "hono": "^4.9.2",
     "jose": "^5.2.0",
+    "nanoid": "^5.1.5",
+    "qrcode": "^1.5.4",
+    "resend": "^6.0.1",
+    "speakeasy": "^2.0.0",
+    "stripe": "^18.4.0",
     "uuid": "^9.0.1",
     "zod": "^3.22.4"
   },

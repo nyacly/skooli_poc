@@ -5,13 +5,14 @@ import { logger } from 'hono/logger';
 import { Bindings } from './types';
 
 // Import routes
-import authRoutes from './routes/auth';
+import authRoutes from './routes/auth-enhanced';
 import productRoutes from './routes/products';
 import cartRoutes from './routes/cart';
 import orderRoutes from './routes/orders';
 import schoolListRoutes from './routes/school-lists';
 import paymentRoutes from './routes/payments';
 import adminRoutes from './routes/admin';
+import checkoutRoutes from './routes/checkout';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -35,6 +36,7 @@ app.route('/api/orders', orderRoutes);
 app.route('/api/school-lists', schoolListRoutes);
 app.route('/api/payments', paymentRoutes);
 app.route('/api/admin', adminRoutes);
+app.route('/checkout', checkoutRoutes);
 
 // Health check
 app.get('/api/health', (c) => {

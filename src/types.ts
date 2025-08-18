@@ -8,6 +8,14 @@ export type Bindings = {
   MOMO_API_SECRET?: string;
   MOMO_API_URL?: string;
   JWT_SECRET?: string;
+  RESEND_API_KEY?: string;
+  AFRICASTALKING_API_KEY?: string;
+  AFRICASTALKING_USERNAME?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_PUBLISHABLE_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_CLIENT_SECRET?: string;
 };
 
 // User types
