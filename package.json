@@ -4,21 +4,30 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vercel": "vercel dev",
     "dev:sandbox": "wrangler pages dev dist --d1=skooli-production --local --ip 0.0.0.0 --port 3000",
     "build": "vite build",
+    "build:vercel": "tsc --noEmit && vite build",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist --project-name skooli",
+    "deploy:vercel": "vercel --prod",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:local": "wrangler d1 migrations apply skooli-production --local",
     "db:migrate:prod": "wrangler d1 migrations apply skooli-production",
     "db:seed": "wrangler d1 execute skooli-production --local --file=./seed.sql",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
+    "supabase:migrate": "tsx scripts/migrate-to-supabase.ts",
     "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
-    "test": "curl http://localhost:3000"
+    "test": "curl http://localhost:3000",
+    "test:api": "curl http://localhost:3000/api/health"
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.1",
+    "@hono/zod-validator": "^0.4.2",
     "@paypal/checkout-server-sdk": "^1.0.3",
+    "@supabase/supabase-js": "^2.55.0",
     "bcryptjs": "^2.4.3",
+    "dotenv": "^17.2.1",
     "hono": "^4.9.2",
     "jose": "^5.2.0",
     "nanoid": "^5.1.5",
@@ -33,8 +42,11 @@
     "@cloudflare/workers-types": "^4.20240117.0",
     "@hono/vite-cloudflare-pages": "^0.4.2",
     "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.0.0",
     "@types/uuid": "^9.0.7",
+    "tsx": "^4.7.1",
     "typescript": "^5.3.3",
+    "vercel": "^37.0.0",
     "vite": "^6.3.5",
     "wrangler": "^4.4.0"
   }

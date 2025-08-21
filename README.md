@@ -1,297 +1,224 @@
-# Skooli E-commerce Platform - Enhanced Edition
+# Skooli - E-commerce Platform for School Supplies
 
-## 🚀 Project Overview
-- **Name**: Skooli - School Supplies E-commerce Platform
-- **Goal**: Transform education logistics across Africa by providing a comprehensive platform for school supplies ordering, delivery, and management
-- **Tech Stack**: Hono + TypeScript + Cloudflare Pages + D1 Database + Multiple Payment Gateways
+## Project Overview
+- **Name**: Skooli
+- **Goal**: A comprehensive e-commerce platform for school supplies with catalog presentation, school list upload functionality, and multiple payment gateway integrations
+- **Features**: 
+  - Product catalog with categories and search
+  - Shopping cart and order management
+  - User authentication with email/SMS verification
+  - Multiple payment gateways (MoMo Pay, Stripe, PayPal)
+  - Order tracking and history
+  - Admin dashboard for product management
 
-## 🌐 Live URLs
-- **Development**: https://3000-i6vrmbizli9ulwzhopw0p-6532622b.e2b.dev
-- **GitHub Repository**: https://github.com/nyacly/skooli_poc
-- **Production**: Will be deployed to Cloudflare Pages
+## Technology Stack
+- **Backend**: Hono Framework (lightweight, fast)
+- **Database**: Supabase (PostgreSQL with Auth)
+- **Deployment**: Vercel (serverless functions)
+- **Frontend**: Vanilla JavaScript with Tailwind CSS
+- **Payment Integration**: MoMo Pay, Stripe, PayPal
+- **Authentication**: Supabase Auth with JWT tokens
 
-## ✨ New Features Added
+## URLs
+- **Production**: (To be deployed on Vercel)
+- **API Endpoints**: `/api/*`
+- **GitHub**: (To be configured)
 
-### 🔐 Enhanced Authentication & Security
-- **Email Verification**: Automated email verification using Resend API
-- **SMS Verification**: Phone number verification via Africa's Talking
-- **Two-Factor Authentication (2FA)**: TOTP-based 2FA with QR code generation
-- **Password Strength Requirements**: Enforced strong password policies
-- **Password Reset**: Secure password reset via email links
-- **Session Management**: Secure JWT-based sessions with expiration
+## Data Architecture
 
-### 💳 Multiple Payment Gateways
-1. **MTN Mobile Money (MoMo)**
-   - Direct integration with MoMo API
-   - Real-time payment status tracking
-   - Webhook support for payment notifications
+### Database Schema (Supabase/PostgreSQL)
+- **users**: User profiles with roles (parent, student, teacher, admin)
+- **categories**: Product categories with slugs
+- **products**: School supplies catalog with inventory tracking
+- **cart_items**: User shopping cart items
+- **orders**: Order records with status tracking
+- **order_items**: Individual items within orders
+- **payments**: Payment transactions with multiple gateway support
+- **school_lists**: Uploaded school supply lists (future feature)
 
-2. **Credit/Debit Cards (Stripe)**
-   - PCI-compliant card processing
-   - Support for Visa, Mastercard, Amex
-   - 3D Secure authentication
-   - Saved payment methods
+### Storage Services
+- **Database**: Supabase (PostgreSQL)
+- **Authentication**: Supabase Auth
+- **File Storage**: Supabase Storage (for product images)
+- **Sessions**: JWT tokens managed by Supabase
 
-3. **PayPal**
-   - PayPal account payments
-   - Guest checkout with cards
-   - International payment support
-   - Buyer protection
+## API Endpoints
 
-4. **Airtel Money** (Coming Soon)
-   - Integration ready for deployment
+### Authentication (`/api/auth`)
+- `POST /signup` - Create new account
+- `POST /signin` - Sign in user
+- `POST /signout` - Sign out user
+- `GET /me` - Get current user profile
+- `POST /forgot-password` - Request password reset
+- `POST /update-password` - Update user password
 
-### 🖼️ Real Product Images
-- Sourced authentic product images from online retailers
-- High-quality images for all product categories
-- Optimized for fast loading
+### Products (`/api/products`)
+- `GET /` - List products with pagination and filters
+- `GET /categories` - Get all categories
+- `GET /featured` - Get featured products
+- `GET /search` - Search products
+- `GET /:id` - Get product details
+- `POST /` - Create product (admin only)
+- `PUT /:id` - Update product (admin only)
+- `DELETE /:id` - Delete product (admin only)
 
-### 📧 Email Notifications
-- Order confirmation emails
-- Payment receipts
-- Shipping updates
-- Account verification
-- Password reset links
-- Professional HTML email templates
+### Shopping Cart (`/api/cart`)
+- `GET /` - Get user's cart
+- `POST /add` - Add item to cart
+- `PUT /:itemId` - Update item quantity
+- `DELETE /:itemId` - Remove item from cart
+- `DELETE /` - Clear entire cart
+- `POST /coupon` - Apply coupon code
 
-### 📱 SMS Notifications
-- Order updates via SMS
-- Delivery notifications
-- Verification codes
-- Integration with Africa's Talking
+### Orders (`/api/orders`)
+- `POST /create` - Create order from cart
+- `GET /` - Get user's orders
+- `GET /:orderId` - Get order details
+- `POST /:orderId/cancel` - Cancel order
+- `GET /:orderId/track` - Track order status
 
-## 🎯 Complete Features List
+### Payments (`/api/payments`)
+- `POST /initialize` - Initialize payment
+- `POST /confirm` - Confirm payment
+- `GET /:paymentId/status` - Get payment status
+- `POST /:paymentId/cancel` - Cancel payment
+- `POST /webhook/:provider` - Payment provider webhooks
 
-### For Parents
-- ✅ **Account Creation** with email/SMS verification
-- ✅ **School List Upload** (PDF, Excel, Text)
-- ✅ **Automatic Product Matching**
-- ✅ **Multiple Payment Options**
-- ✅ **Order Tracking**
-- ✅ **Email/SMS Notifications**
-- ✅ **Saved Payment Methods**
-- ✅ **Order History**
-- ✅ **2FA Security**
+## Environment Variables
 
-### For Schools
-- ✅ **Pre-configured School Lists**
-- ✅ **Bulk Order Management**
-- ✅ **Direct Dormitory Delivery**
-- ✅ **School-specific Catalogs**
-- ✅ **Reporting Dashboard**
-
-### For Administrators
-- ✅ **Order Management System**
-- ✅ **Product Inventory Control**
-- ✅ **Customer Management**
-- ✅ **Payment Reconciliation**
-- ✅ **Sales Analytics**
-- ✅ **Multi-channel Support**
-
-## 🛠️ Technical Implementation
-
-### Database Schema
-```sql
-- users (with verification fields)
-- verification_codes
-- backup_codes (2FA)
-- payment_methods
-- products (with real images)
-- categories
-- schools
-- orders
-- payments (multi-gateway)
-- sessions
-```
-
-### API Endpoints
-
-#### Authentication & Verification
-- `POST /api/auth/register` - Register with verification
-- `POST /api/auth/verify` - Verify email/SMS code
-- `POST /api/auth/login` - Login with 2FA support
-- `POST /api/auth/forgot-password` - Request password reset
-- `POST /api/auth/reset-password` - Reset password
-- `POST /api/auth/enable-2fa` - Enable 2FA
-- `POST /api/auth/verify-2fa` - Verify 2FA code
-
-#### Checkout & Payments
-- `GET /checkout/page` - Checkout page with all payment options
-- `POST /checkout/process` - Process multi-gateway checkout
-- `POST /api/payments/initiate` - Initiate payment
-- `GET /api/payments/status/:id` - Check payment status
-- `POST /payment/callback/momo` - MoMo webhook
-- `POST /payment/callback/stripe` - Stripe webhook
-- `POST /payment/callback/paypal` - PayPal webhook
-
-## 🔑 Environment Variables Required
+Required environment variables for deployment:
 
 ```env
-# Database
-DATABASE_URL=your-d1-database-url
+# Supabase Configuration
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
-# Authentication
-JWT_SECRET=your-jwt-secret
+# Application URLs
+VITE_APP_URL=https://your-app.vercel.app
+FRONTEND_URL=https://your-app.vercel.app
 
-# Email Service (Resend)
-RESEND_API_KEY=your-resend-api-key
-
-# SMS Service (Africa's Talking)
-AFRICASTALKING_API_KEY=your-africastalking-key
-AFRICASTALKING_USERNAME=your-username
-
-# MoMo Pay
-MOMO_API_KEY=your-momo-api-key
-MOMO_API_SECRET=your-momo-secret
-MOMO_API_URL=https://api.momo.com
-
-# Stripe
-STRIPE_SECRET_KEY=sk_live_your-key
-STRIPE_PUBLISHABLE_KEY=pk_live_your-key
-STRIPE_WEBHOOK_SECRET=whsec_your-secret
-
-# PayPal
-PAYPAL_CLIENT_ID=your-client-id
-PAYPAL_CLIENT_SECRET=your-client-secret
+# Payment Gateways (Optional for development)
+MOMO_API_KEY=your_momo_api_key
+STRIPE_SECRET_KEY=your_stripe_secret_key
+PAYPAL_SECRET=your_paypal_secret
 ```
 
-## 📦 Installation & Setup
+## Setup Instructions
 
+### 1. Supabase Setup
+1. Create a Supabase project at https://app.supabase.com
+2. Copy your project URL and anon key
+3. Run the migration script in `supabase/migrations/20240817000001_initial_schema.sql`
+4. Configure Row Level Security (RLS) policies as needed
+
+### 2. Local Development
 ```bash
-# Clone repository
-git clone https://github.com/nyacly/skooli_poc.git
-cd skooli_poc
-
 # Install dependencies
 npm install
 
-# Set up environment variables
+# Copy environment variables
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your Supabase credentials
 
-# Run database migrations
-npx wrangler d1 migrations apply skooli-production --local
+# Run development server
+npm run dev:vercel
 
-# Seed database
-npx wrangler d1 execute skooli-production --local --file=./seed.sql
-
-# Build project
-npm run build
-
-# Start development server
-pm2 start ecosystem.config.cjs
-
-# Access at http://localhost:3000
+# Or run with Vercel CLI
+vercel dev
 ```
 
-## 🚀 Deployment to Production
+### 3. Deployment to Vercel
 
-### Cloudflare Pages Deployment
-```bash
-# Build for production
-npm run build
+#### Prerequisites
+- GitHub repository connected to Vercel
+- Supabase project created and configured
+- Environment variables set in Vercel dashboard
 
-# Deploy to Cloudflare Pages
-npx wrangler pages deploy dist --project-name skooli
+#### Deployment Steps
+1. Push code to GitHub
+2. Import project to Vercel
+3. Configure environment variables in Vercel dashboard
+4. Deploy
 
-# Set environment variables
-npx wrangler pages secret put JWT_SECRET --project-name skooli
-npx wrangler pages secret put RESEND_API_KEY --project-name skooli
-npx wrangler pages secret put STRIPE_SECRET_KEY --project-name skooli
-# ... add all other secrets
+#### Vercel Configuration
+The project includes `vercel.json` for proper configuration:
+- API routes at `/api/*`
+- Function timeout set to 30 seconds
+- Build command: `npm run build:vercel`
+
+## Currently Completed Features
+✅ Database schema migrated to Supabase (PostgreSQL)
+✅ Supabase client configuration with TypeScript types
+✅ Authentication routes with Supabase Auth
+✅ Product catalog and search functionality
+✅ Shopping cart management
+✅ Order creation and tracking
+✅ Payment gateway integration structure
+✅ API routes adapted for Vercel deployment
+✅ Environment configuration for multiple environments
+
+## Features Not Yet Implemented
+- [ ] Frontend UI components
+- [ ] Real payment gateway integration (currently mocked)
+- [ ] Email/SMS notification services
+- [ ] School list upload and parsing
+- [ ] Admin dashboard UI
+- [ ] Product image upload to Supabase Storage
+- [ ] Real-time order status updates
+- [ ] Analytics and reporting
+
+## Recommended Next Steps
+1. **Connect to GitHub**: Push code to GitHub repository
+2. **Deploy to Vercel**: Import project and configure environment variables
+3. **Test API Endpoints**: Verify all endpoints work with Supabase
+4. **Implement Frontend**: Build the UI components
+5. **Payment Integration**: Complete real payment gateway setup
+6. **Add Notifications**: Implement email/SMS services
+7. **School Lists Feature**: Build upload and parsing functionality
+8. **Admin Dashboard**: Create management interface
+
+## Project Structure
+```
+webapp/
+├── api/
+│   ├── index.ts          # Main API handler for Vercel
+│   └── routes/           # API route handlers
+│       ├── auth.ts       # Authentication endpoints
+│       ├── products.ts   # Product management
+│       ├── cart.ts       # Shopping cart
+│       ├── orders.ts     # Order management
+│       └── payments.ts   # Payment processing
+├── lib/
+│   └── supabase.ts       # Supabase client configuration
+├── supabase/
+│   └── migrations/       # Database migrations
+├── public/               # Static assets
+├── .env.example          # Environment variables template
+├── vercel.json           # Vercel configuration
+├── package.json          # Dependencies and scripts
+└── README.md             # Project documentation
 ```
 
-### Database Setup
-```bash
-# Create production D1 database
-npx wrangler d1 create skooli-production
+## Security Considerations
+- All sensitive operations require authentication
+- Admin routes protected with role-based access control
+- Payment webhooks should verify signatures in production
+- Use environment variables for all secrets
+- Enable Row Level Security (RLS) in Supabase
+- Implement rate limiting for API endpoints
 
-# Apply migrations to production
-npx wrangler d1 migrations apply skooli-production
+## Support and Documentation
+- **Supabase Docs**: https://supabase.com/docs
+- **Vercel Docs**: https://vercel.com/docs
+- **Hono Framework**: https://hono.dev
+- **Payment Gateway Docs**:
+  - MoMo: https://developers.momo.vn
+  - Stripe: https://stripe.com/docs
+  - PayPal: https://developer.paypal.com
 
-# Update wrangler.jsonc with database ID
-```
+## License
+Proprietary - All rights reserved
 
-## 📊 Sample Test Data
-
-### Test User Accounts
-- **Parent**: parent@example.com / TestPass123!
-- **Admin**: admin@skooli.ug / AdminPass123!
-
-### Test Payment Cards (Stripe)
-- **Success**: 4242 4242 4242 4242
-- **Decline**: 4000 0000 0000 0002
-- **3D Secure**: 4000 0027 6000 3184
-
-### Test MoMo Numbers
-- **Success**: 256700000000
-- **Insufficient Funds**: 256700000001
-
-## 🔒 Security Features
-- ✅ Password hashing with bcrypt
-- ✅ JWT token authentication
-- ✅ Input validation with Zod
-- ✅ SQL injection prevention
-- ✅ XSS protection
-- ✅ CORS configuration
-- ✅ Rate limiting (planned)
-- ✅ 2FA authentication
-- ✅ Secure session management
-
-## 📈 Performance Optimizations
-- Edge deployment with Cloudflare Workers
-- CDN for static assets
-- Database indexing
-- Image optimization
-- Lazy loading
-- Code splitting
-- Caching strategies
-
-## 🎯 Next Steps for Production
-
-1. **API Keys Setup**
-   - Obtain production API keys for all services
-   - Configure Cloudflare secrets
-
-2. **Payment Gateway Production Setup**
-   - Complete MoMo merchant registration
-   - Activate Stripe production account
-   - Complete PayPal business verification
-
-3. **Domain & SSL**
-   - Purchase skooli.ug domain
-   - Configure Cloudflare DNS
-   - Set up SSL certificates
-
-4. **Compliance**
-   - Terms of Service
-   - Privacy Policy
-   - GDPR compliance
-   - PCI DSS compliance
-
-5. **Marketing**
-   - School partnerships
-   - Parent onboarding campaigns
-   - Social media presence
-
-## 🤝 Contributing
-Please read CONTRIBUTING.md for details on our code of conduct and the process for submitting pull requests.
-
-## 📄 License
-Proprietary - Skooli Uganda
-
-## 📞 Support
-- **Email**: support@skooli.ug
-- **Phone**: +256 700 000 000
-- **WhatsApp**: +256 700 000 000
-
-## 🏆 Acknowledgments
-- Cloudflare for edge infrastructure
-- MTN Uganda for MoMo API
-- All partner schools
-
----
-
-**Last Updated**: August 17, 2025
-**Version**: 2.0.0
-**Status**: Production Ready 🎉
+## Last Updated
+2024-08-17

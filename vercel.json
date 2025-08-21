@@ -1,0 +1,38 @@
+{
+  "buildCommand": "npm run build:vercel",
+  "outputDirectory": "dist",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30
+    },
+    "api/auth/[...path].ts": {
+      "maxDuration": 10
+    },
+    "api/products/[...path].ts": {
+      "maxDuration": 10
+    },
+    "api/cart/[...path].ts": {
+      "maxDuration": 10
+    },
+    "api/orders/[...path].ts": {
+      "maxDuration": 10
+    },
+    "api/payments/[...path].ts": {
+      "maxDuration": 30
+    }
+  }
+}

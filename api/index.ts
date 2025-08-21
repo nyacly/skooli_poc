@@ -1,0 +1,68 @@
+import { Hono } from 'hono';
+import { handle } from '@hono/node-server/vercel';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+
+// Import Supabase-adapted routes
+import authRoutes from './routes/auth';
+import productRoutes from './routes/products';
+import cartRoutes from './routes/cart';
+import orderRoutes from './routes/orders';
+import paymentRoutes from './routes/payments';
+
+const app = new Hono();
+
+// Middleware
+app.use('*', logger());
+app.use('/api/*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// API Routes
+app.route('/api/auth', authRoutes);
+app.route('/api/products', productRoutes);
+app.route('/api/cart', cartRoutes);
+app.route('/api/orders', orderRoutes);
+app.route('/api/payments', paymentRoutes);
+
+// Health check
+app.get('/api/health', (c) => {
+  return c.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: 'vercel',
+    database: 'supabase'
+  });
+});
+
+// Main page (for Vercel, we'll serve a simple API response)
+app.get('/', (c) => {
+  return c.json({
+    name: 'Skooli API',
+    version: '2.0.0',
+    status: 'running',
+    endpoints: [
+      '/api/health',
+      '/api/auth',
+      '/api/products',
+      '/api/cart',
+      '/api/orders',
+      '/api/payments'
+    ]
+  });
+});
+
+// 404 handler
+app.notFound((c) => {
+  return c.json({ error: 'Not found' }, 404);
+});
+
+// Error handler
+app.onError((err, c) => {
+  console.error('Error:', err);
+  return c.json({ error: 'Internal server error' }, 500);
+});
+
+export default handle(app);
