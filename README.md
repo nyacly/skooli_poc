@@ -22,7 +22,7 @@
 ## URLs
 - **Production**: (To be deployed on Vercel)
 - **API Endpoints**: `/api/*`
-- **GitHub**: (To be configured)
+- **GitHub**: https://github.com/nyacly/skooli_poc
 
 ## Data Architecture
 
