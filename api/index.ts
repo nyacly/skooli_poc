@@ -38,8 +38,8 @@ app.get('/api/health', (c) => {
   });
 });
 
-// Main page (for Vercel, we'll serve a simple API response)
-app.get('/', (c) => {
+// API info endpoint
+app.get('/api', (c) => {
   return c.json({
     name: 'Skooli API',
     version: '2.0.0',

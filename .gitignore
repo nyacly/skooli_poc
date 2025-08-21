@@ -11,6 +11,7 @@ pids
 # Build outputs
 dist/
 build/
+api-dist/
 .wrangler/
 .mf/
 .vercel/

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skooli - School Supplies E-commerce</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/styles.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center">
+                        <i class="fas fa-graduation-cap text-blue-600 text-2xl mr-2"></i>
+                        <span class="font-bold text-xl text-gray-900">Skooli</span>
+                    </a>
+                    <div class="hidden md:ml-6 md:flex md:space-x-8">
+                        <a href="#" class="nav-link text-gray-700 hover:text-blue-600 px-3 py-2" data-page="home">Home</a>
+                        <a href="#" class="nav-link text-gray-700 hover:text-blue-600 px-3 py-2" data-page="products">Products</a>
+                        <a href="#" class="nav-link text-gray-700 hover:text-blue-600 px-3 py-2" data-page="categories">Categories</a>
+                        <a href="#" class="nav-link text-gray-700 hover:text-blue-600 px-3 py-2" data-page="about">About</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="relative">
+                        <input type="text" id="searchInput" placeholder="Search products..." 
+                               class="w-64 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500">
+                        <button id="searchBtn" class="absolute right-2 top-2 text-gray-500 hover:text-blue-600">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <button id="cartBtn" class="relative text-gray-700 hover:text-blue-600">
+                        <i class="fas fa-shopping-cart text-xl"></i>
+                        <span id="cartCount" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">0</span>
+                    </button>
+                    <button id="authBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                        <i class="fas fa-user mr-2"></i>
+                        <span id="authText">Sign In</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="app" class="min-h-screen">
+        <!-- Hero Section -->
+        <section id="heroSection" class="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h1 class="text-4xl md:text-5xl font-bold mb-4">Welcome to Skooli</h1>
+                    <p class="text-xl mb-8">Your one-stop shop for all school supplies</p>
+                    <div class="flex justify-center space-x-4">
+                        <button id="shopNowBtn" class="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100">
+                            Shop Now
+                        </button>
+                        <button id="uploadListBtn" class="bg-transparent border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600">
+                            Upload School List
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Categories Section -->
+        <section id="categoriesSection" class="py-12">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-8 text-center">Shop by Category</h2>
+                <div id="categoriesGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    <!-- Categories will be loaded here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Featured Products Section -->
+        <section id="featuredSection" class="py-12 bg-gray-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-8 text-center">Featured Products</h2>
+                <div id="featuredGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Featured products will be loaded here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Products Grid (hidden by default) -->
+        <section id="productsSection" class="py-12 hidden">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-bold text-gray-900">Products</h2>
+                    <div class="flex items-center space-x-4">
+                        <select id="sortSelect" class="px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="name-asc">Name (A-Z)</option>
+                            <option value="name-desc">Name (Z-A)</option>
+                            <option value="price-asc">Price (Low to High)</option>
+                            <option value="price-desc">Price (High to Low)</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="productsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Products will be loaded here -->
+                </div>
+                <div id="pagination" class="mt-8 flex justify-center">
+                    <!-- Pagination will be loaded here -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Cart Modal -->
+    <div id="cartModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">Shopping Cart</h3>
+                    <button id="closeCartBtn" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div id="cartItems" class="space-y-4 max-h-96 overflow-y-auto">
+                    <!-- Cart items will be loaded here -->
+                </div>
+                <div class="border-t pt-4 mt-4">
+                    <div class="flex justify-between mb-2">
+                        <span class="font-semibold">Subtotal:</span>
+                        <span id="cartSubtotal">$0.00</span>
+                    </div>
+                    <div class="flex justify-between mb-2">
+                        <span class="font-semibold">Tax:</span>
+                        <span id="cartTax">$0.00</span>
+                    </div>
+                    <div class="flex justify-between mb-4">
+                        <span class="font-bold text-lg">Total:</span>
+                        <span id="cartTotal" class="font-bold text-lg">$0.00</span>
+                    </div>
+                    <button id="checkoutBtn" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700">
+                        Proceed to Checkout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div id="authModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 id="authTitle" class="text-lg font-bold text-gray-900">Sign In</h3>
+                    <button id="closeAuthBtn" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <form id="authForm" class="space-y-4">
+                    <div id="nameField" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700">Name</label>
+                        <input type="text" id="nameInput" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="emailInput" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="passwordInput" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <button type="submit" id="authSubmitBtn" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                        Sign In
+                    </button>
+                    <div class="text-center">
+                        <a href="#" id="authToggle" class="text-blue-600 hover:underline">Don't have an account? Sign Up</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="hidden fixed top-0 left-0 w-full h-full flex items-center justify-center bg-gray-900 bg-opacity-50 z-50">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2">
+        <!-- Toast messages will appear here -->
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+    <script>
+        // Set API base URL from environment or use default
+        window.API_BASE_URL = window.location.origin;
+        console.log('API Base URL:', window.API_BASE_URL);
+    </script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

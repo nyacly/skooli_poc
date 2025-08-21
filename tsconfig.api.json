@@ -1,14 +1,21 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": ".vercel/output/functions",
-    "lib": ["ESNext", "DOM"]
+    "outDir": "./api-dist",
+    "lib": ["ESNext", "DOM"],
+    "module": "ESNext",
+    "target": "ES2020",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true
   },
   "include": [
     "api/**/*.ts",
     "lib/**/*.ts"
   ],
   "exclude": [
-    "src"
+    "src",
+    "public",
+    "dist"
   ]
 }
