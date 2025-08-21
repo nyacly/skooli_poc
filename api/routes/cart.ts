@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { supabase } from '../../lib/supabase';
+// Import Supabase client. Include .js for Node ESM resolution
+import { supabase } from '../../lib/supabase.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 

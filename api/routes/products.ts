@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { supabase } from '../../lib/supabase';
+// Import Supabase client for product queries. Node's ESM requires the .js extension
+import { supabase } from '../../lib/supabase.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { supabase } from '../../lib/supabase';
+// Import the Supabase client. The .js extension is necessary for Node's ESM loader
+import { supabase } from '../../lib/supabase.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
