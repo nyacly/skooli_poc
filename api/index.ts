@@ -4,11 +4,12 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
 // Import Supabase-adapted routes
-import authRoutes from './routes/auth';
-import productRoutes from './routes/products';
-import cartRoutes from './routes/cart';
-import orderRoutes from './routes/orders';
-import paymentRoutes from './routes/payments';
+// The .js extension is required for Node's ES module resolver in production
+import authRoutes from './routes/auth.js';
+import productRoutes from './routes/products.js';
+import cartRoutes from './routes/cart.js';
+import orderRoutes from './routes/orders.js';
+import paymentRoutes from './routes/payments.js';
 
 const app = new Hono();
 
