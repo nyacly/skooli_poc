@@ -6,8 +6,8 @@ let sessionId = localStorage.getItem('sessionId') || null;
 let authToken = localStorage.getItem('authToken') || null;
 let currentUser = null;
 
-// API Base URL
-const API_BASE = '/api';
+// API Base URL - use the one set in HTML or default to /api
+const API_BASE = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : '/api';
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {

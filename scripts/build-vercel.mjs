@@ -1,31 +1,28 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+#!/usr/bin/env node
 
-const outDir = path.resolve('.vercel/output');
-const functionsDir = path.join(outDir, 'functions');
-const apiDir = path.join(functionsDir, 'api');
-const apiFile = path.join(apiDir, 'index.js');
-const apiFuncDir = path.join(apiDir, 'index.func');
-const routesDir = path.join(apiDir, 'routes');
-const libSrcDir = path.join(functionsDir, 'lib');
-const libDestDir = path.join(apiFuncDir, 'lib');
+import { copyFileSync, mkdirSync, cpSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-await fs.mkdir(apiFuncDir, { recursive: true });
-await fs.rename(apiFile, path.join(apiFuncDir, 'index.js'));
-await fs.rename(routesDir, path.join(apiFuncDir, 'routes'));
-await fs.rename(libSrcDir, libDestDir);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const rootDir = join(__dirname, '..');
 
-const indexPath = path.join(apiFuncDir, 'index.js');
-let indexContent = await fs.readFile(indexPath, 'utf8');
-indexContent = indexContent.replace(/\.\.\/lib\//g, './lib/');
-await fs.writeFile(indexPath, indexContent);
+console.log('🔨 Building for Vercel...');
 
-const vcConfig = {
-  runtime: 'nodejs20.x',
-  handler: 'index.js'
-};
-await fs.writeFile(path.join(apiFuncDir, '.vc-config.json'), JSON.stringify(vcConfig, null, 2));
+// Create dist directory if it doesn't exist
+const distDir = join(rootDir, 'dist');
+if (!existsSync(distDir)) {
+  mkdirSync(distDir, { recursive: true });
+}
 
-const rootConfig = { version: 3 };
-await fs.writeFile(path.join(outDir, 'config.json'), JSON.stringify(rootConfig, null, 2));
+// Copy public files to dist (Vercel will serve these as static files)
+const publicDir = join(rootDir, 'public');
+if (existsSync(publicDir)) {
+  console.log('📁 Copying public files to dist...');
+  cpSync(publicDir, distDir, { recursive: true });
+  console.log('✅ Public files copied');
+}
 
+// The API files are handled by Vercel Functions directly from the api/ directory
+console.log('✅ Build complete! API routes will be served from /api directory');
+console.log('📦 Static files will be served from /dist directory');
