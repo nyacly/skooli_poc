@@ -13,6 +13,7 @@ dist/
 build/
 .wrangler/
 .mf/
+.vercel/
 
 # Environment variables
 .env
@@ -57,3 +58,4 @@ coverage/
 tmp/
 temp/
 *.tmp
+
