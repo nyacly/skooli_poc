@@ -2,8 +2,6 @@ import { z } from 'zod';
 
 // Environment bindings
 export type Bindings = {
-  DB: D1Database;
-  KV: KVNamespace;
   MOMO_API_KEY?: string;
   MOMO_API_SECRET?: string;
   MOMO_API_URL?: string;

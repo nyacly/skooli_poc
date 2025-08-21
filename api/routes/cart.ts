@@ -35,7 +35,7 @@ cart.get('/', async (c) => {
           price,
           image_url,
           sku,
-          quantity as stock_quantity
+          stock_quantity:quantity
         )
       `)
       .eq('user_id', user.id)
