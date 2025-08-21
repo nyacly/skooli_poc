@@ -140,6 +140,14 @@ export interface Database {
   };
 }
 
+// Helper to get the base URL
+const getURL = () => {
+  const url = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:3000';
+  return url.replace(/\/$/, ''); // Remove trailing slash
+};
+
 // Helper functions
 export async function signUp(email: string, password: string, metadata: any) {
   const { data, error } = await supabase.auth.signUp({
@@ -147,7 +155,7 @@ export async function signUp(email: string, password: string, metadata: any) {
     password,
     options: {
       data: metadata,
-      emailRedirectTo: `${window.location.origin}/auth/callback`,
+      emailRedirectTo: `${getURL()}/auth/callback`,
     },
   });
   
@@ -190,7 +198,7 @@ export async function getCurrentUser() {
 
 export async function resetPassword(email: string) {
   const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/reset-password`,
+    redirectTo: `${getURL()}/auth/reset-password`,
   });
   
   return { data, error };

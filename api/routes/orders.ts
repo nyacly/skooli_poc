@@ -56,7 +56,7 @@ orders.post('/create', zValidator('json', createOrderSchema), async (c) => {
           id,
           name,
           price,
-          quantity as stock_quantity
+          stock_quantity:quantity
         )
       `)
       .eq('user_id', user.id);
