@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Bindings, SchoolListSchema } from '../types';
+import { supabase } from '../../lib/supabase';
 import { getUserFromToken } from '../utils/auth';
 
 const schoolListRoutes = new Hono<{ Bindings: Bindings }>();
@@ -11,37 +12,31 @@ schoolListRoutes.get('/', async (c) => {
     const listType = c.req.query('type');
     const classParam = c.req.query('class');
     
-    let query = 'SELECT sl.*, s.name as school_name FROM school_lists sl JOIN schools s ON sl.school_id = s.id WHERE sl.is_active = 1';
-    const params: any[] = [];
-    
+    let query = supabase
+      .from('school_lists')
+      .select('*, schools ( name )')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
     if (schoolId) {
-      query += ' AND sl.school_id = ?';
-      params.push(schoolId);
+      query = query.eq('school_id', schoolId);
     }
-    
     if (listType) {
-      query += ' AND sl.list_type = ?';
-      params.push(listType);
+      query = query.eq('list_type', listType);
     }
-    
     if (classParam) {
-      query += ' AND sl.class = ?';
-      params.push(classParam);
+      query = query.eq('class', classParam);
     }
     
-    query += ' ORDER BY sl.created_at DESC';
+    const { data: lists, error } = await query;
+
+    if (error) throw error;
     
-    const lists = await c.env.DB.prepare(query).bind(...params).all();
-    
-    // Parse items JSON
-    const results = lists.results.map(list => ({
-      ...list,
-      items: list.items ? JSON.parse(list.items as string) : [],
-    }));
-    
-    return c.json(results);
+    // Supabase client automatically parses JSONB, so no manual parsing needed.
+    return c.json(lists || []);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Get school lists error:", error);
+    return c.json({ error: 'Failed to fetch school lists', details: error.message }, 500);
   }
 });
 
@@ -50,36 +45,36 @@ schoolListRoutes.get('/:id', async (c) => {
   try {
     const id = c.req.param('id');
     
-    const list = await c.env.DB.prepare(
-      'SELECT sl.*, s.name as school_name FROM school_lists sl JOIN schools s ON sl.school_id = s.id WHERE sl.id = ?'
-    ).bind(id).first();
+    const { data: list, error } = await supabase
+      .from('school_lists')
+      .select('*, schools (name)')
+      .eq('id', id)
+      .single();
     
-    if (!list) {
+    if (error || !list) {
       return c.json({ error: 'School list not found' }, 404);
     }
     
-    // Parse items and match with products
-    const items = list.items ? JSON.parse(list.items as string) : [];
+    const items = (list.items as any[]) || [];
     const matchedItems = [];
     
     for (const item of items) {
-      let product = null;
-      
-      // Try to find matching product
+      let productQuery = supabase
+        .from('products')
+        .select('id, sku, name, price, image_url')
+        .eq('is_active', true);
+
       if (item.matched_product_id) {
-        product = await c.env.DB.prepare(
-          'SELECT id, sku, name, price, image_url FROM products WHERE id = ? AND is_active = 1'
-        ).bind(item.matched_product_id).first();
+        productQuery = productQuery.eq('id', item.matched_product_id);
       } else {
-        // Try to match by name
-        product = await c.env.DB.prepare(
-          'SELECT id, sku, name, price, image_url FROM products WHERE name LIKE ? AND is_active = 1 LIMIT 1'
-        ).bind(`%${item.name}%`).first();
+        productQuery = productQuery.ilike('name', `%${item.name}%`).limit(1);
       }
       
+      const { data: product } = await productQuery.single();
+
       matchedItems.push({
         ...item,
-        product,
+        product: product || null,
       });
     }
     
@@ -88,7 +83,8 @@ schoolListRoutes.get('/:id', async (c) => {
       items: matchedItems,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Get single school list error:", error);
+    return c.json({ error: 'Failed to fetch school list', details: error.message }, 500);
   }
 });
 
@@ -101,49 +97,40 @@ schoolListRoutes.post('/:id/quick-order', async (c) => {
     }
     
     const listId = c.req.param('id');
-    const { studentId, selectedItems } = await c.req.json();
-    
-    // Get school list
-    const list = await c.env.DB.prepare(
-      'SELECT * FROM school_lists WHERE id = ? AND is_active = 1'
-    ).bind(listId).first();
-    
-    if (!list) {
+    const { selectedItems } = await c.req.json();
+
+    const { data: list, error: listError } = await supabase
+      .from('school_lists')
+      .select('*')
+      .eq('id', listId)
+      .eq('is_active', true)
+      .single();
+
+    if (listError || !list) {
       return c.json({ error: 'School list not found' }, 404);
     }
     
-    const items = JSON.parse(list.items as string);
+    const items = (list.items as any[]) || [];
     
-    // Get or create cart
-    let cart = await c.env.DB.prepare(
-      'SELECT * FROM carts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1'
-    ).bind(user.id).first();
+    const { data: cartData } = await supabase.from('carts').select('*').eq('user_id', user.id).limit(1).single();
+    let cart = cartData;
+    let cartItems = (cart?.items as any[]) || [];
     
-    let cartItems = cart?.items ? JSON.parse(cart.items as string) : [];
-    
-    // Add selected items to cart
     for (const item of items) {
-      if (selectedItems && !selectedItems.includes(item.name)) {
-        continue;
-      }
-      
-      // Find matching product
-      let product;
+      if (selectedItems && !selectedItems.includes(item.name)) continue;
+
+      let productQuery = supabase.from('products').select('*').eq('is_active', true);
       if (item.matched_product_id) {
-        product = await c.env.DB.prepare(
-          'SELECT * FROM products WHERE id = ? AND is_active = 1'
-        ).bind(item.matched_product_id).first();
+        productQuery = productQuery.eq('id', item.matched_product_id);
       } else {
-        product = await c.env.DB.prepare(
-          'SELECT * FROM products WHERE name LIKE ? AND is_active = 1 LIMIT 1'
-        ).bind(`%${item.name}%`).first();
+        productQuery = productQuery.ilike('name', `%${item.name}%`).limit(1);
       }
+      const { data: product } = await productQuery.single();
       
       if (product) {
-        // Check if item already in cart
-        const existingItem = cartItems.find((ci: any) => ci.productId === product.id);
-        if (existingItem) {
-          existingItem.quantity += item.quantity;
+        const existingItemIndex = cartItems.findIndex((ci: any) => ci.productId === product.id);
+        if (existingItemIndex > -1) {
+          cartItems[existingItemIndex].quantity += item.quantity;
         } else {
           cartItems.push({
             productId: product.id,
@@ -157,35 +144,23 @@ schoolListRoutes.post('/:id/quick-order', async (c) => {
       }
     }
     
-    // Calculate total
-    const totalAmount = cartItems.reduce((sum: number, item: any) => 
-      sum + (item.price * item.quantity), 0);
+    const totalAmount = cartItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
     
     if (cart) {
-      // Update existing cart
-      await c.env.DB.prepare(
-        'UPDATE carts SET items = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(JSON.stringify(cartItems), totalAmount, cart.id).run();
+      await supabase.from('carts').update({ items: cartItems, total_amount: totalAmount, updated_at: new Date().toISOString() }).eq('id', cart.id);
     } else {
-      // Create new cart
-      const result = await c.env.DB.prepare(
-        'INSERT INTO carts (user_id, items, total_amount) VALUES (?, ?, ?)'
-      ).bind(user.id, JSON.stringify(cartItems), totalAmount).run();
-      
-      cart = { id: result.meta.last_row_id };
+      const { data: newCart } = await supabase.from('carts').insert({ user_id: user.id, items: cartItems, total_amount: totalAmount }).select().single();
+      cart = newCart;
     }
     
     return c.json({
       success: true,
-      cart: {
-        id: cart.id,
-        items: cartItems,
-        totalAmount,
-      },
+      cart: { id: cart.id, items: cartItems, totalAmount },
       schoolListId: listId,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Quick order error:", error);
+    return c.json({ error: 'Failed to create quick order', details: error.message }, 500);
   }
 });
 
@@ -199,77 +174,78 @@ schoolListRoutes.post('/upload', async (c) => {
     
     const { schoolId, studentId, fileName, fileContent } = await c.req.json();
     
-    // Parse the file content (simplified - in production, use proper parsing)
     const lines = fileContent.split('\n').filter((line: string) => line.trim());
     const parsedItems = [];
     
     for (const line of lines) {
-      // Simple parsing - extract quantity and item name
       const match = line.match(/(\d+)\s+(.+)/);
       if (match) {
         const [, quantity, name] = match;
-        parsedItems.push({
-          name: name.trim(),
-          quantity: parseInt(quantity),
-        });
+        parsedItems.push({ name: name.trim(), quantity: parseInt(quantity) });
       }
     }
     
-    // Try to match products
     const matchedProducts = [];
     for (const item of parsedItems) {
-      const product = await c.env.DB.prepare(
-        'SELECT id, name, price FROM products WHERE name LIKE ? AND is_active = 1 LIMIT 1'
-      ).bind(`%${item.name}%`).first();
-      
+      const { data: product } = await supabase
+        .from('products')
+        .select('id, name, price')
+        .ilike('name', `%${item.name}%`)
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
       if (product) {
-        matchedProducts.push({
-          ...item,
-          matched_product_id: product.id,
-          matched_product_name: product.name,
-          matched_product_price: product.price,
-        });
+        matchedProducts.push({ ...item, matched_product_id: product.id, matched_product_name: product.name, matched_product_price: product.price });
       } else {
         matchedProducts.push(item);
       }
     }
     
-    // Save uploaded list
-    const result = await c.env.DB.prepare(
-      `INSERT INTO uploaded_lists (user_id, school_id, student_id, file_name, parsed_items, matched_products, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      user.id,
-      schoolId || null,
-      studentId || null,
-      fileName,
-      JSON.stringify(parsedItems),
-      JSON.stringify(matchedProducts),
-      'matched'
-    ).run();
+    const { data: newUpload, error } = await supabase
+      .from('uploaded_lists')
+      .insert({
+        user_id: user.id,
+        school_id: schoolId || null,
+        student_id: studentId || null,
+        file_name: fileName,
+        parsed_items: parsedItems,
+        matched_products: matchedProducts,
+        status: 'matched',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
     
     return c.json({
       success: true,
-      uploadId: result.meta.last_row_id,
+      uploadId: newUpload.id,
       parsedItems,
       matchedProducts,
-      matchRate: (matchedProducts.filter(p => p.matched_product_id).length / parsedItems.length) * 100,
+      matchRate: (matchedProducts.filter((p: any) => p.matched_product_id).length / parsedItems.length) * 100,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Upload list error:", error);
+    return c.json({ error: 'Failed to upload list', details: error.message }, 500);
   }
 });
 
 // Get schools
 schoolListRoutes.get('/schools/all', async (c) => {
   try {
-    const schools = await c.env.DB.prepare(
-      'SELECT * FROM schools WHERE is_active = 1 ORDER BY name'
-    ).all();
+    const { data: schools, error } = await supabase
+      .from('schools')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (error) throw error;
     
-    return c.json(schools.results);
+    return c.json(schools || []);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Get schools error:", error);
+    return c.json({ error: 'Failed to fetch schools', details: error.message }, 500);
   }
 });
 

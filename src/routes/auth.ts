@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { Bindings, UserSchema } from '../types';
 import { hashPassword, verifyPassword, generateToken, verifyToken, generateSessionId } from '../utils/auth';
+import { supabase } from '../../lib/supabase';
 
 const authRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -23,11 +24,14 @@ authRoutes.post('/login', async (c) => {
     const { email, password } = LoginSchema.parse(body);
     
     // Find user
-    const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE email = ? AND is_active = 1'
-    ).bind(email).first();
-    
-    if (!user) {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('is_active', true)
+      .single();
+
+    if (userError || !user) {
       return c.json({ error: 'Invalid credentials' }, 401);
     }
     
@@ -45,22 +49,23 @@ authRoutes.post('/login', async (c) => {
     }, c.env.JWT_SECRET);
     
     // Update last login
-    await c.env.DB.prepare(
-      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(user.id).run();
+    await supabase
+      .from('users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', user.id);
     
     // Create session
     const sessionId = generateSessionId();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     
-    await c.env.DB.prepare(
-      'INSERT INTO sessions (session_id, user_id, data, expires_at) VALUES (?, ?, ?, ?)'
-    ).bind(
-      sessionId,
-      user.id,
-      JSON.stringify({ token }),
-      expiresAt.toISOString()
-    ).run();
+    await supabase
+      .from('sessions')
+      .insert({
+        session_id: sessionId,
+        user_id: user.id,
+        data: { token },
+        expires_at: expiresAt.toISOString(),
+      });
     
     return c.json({
       success: true,
@@ -78,7 +83,8 @@ authRoutes.post('/login', async (c) => {
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Invalid input', details: error.errors }, 400);
     }
-    return c.json({ error: error.message }, 500);
+    console.error("Login error:", error);
+    return c.json({ error: 'Failed to login', details: error.message }, 500);
   }
 });
 
@@ -89,10 +95,13 @@ authRoutes.post('/register', async (c) => {
     const data = RegisterSchema.parse(body);
     
     // Check if user exists
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM users WHERE email = ? OR phone = ?'
-    ).bind(data.email, data.phone || '').first();
-    
+    const { data: existing, error: existingError } = await supabase
+      .from('users')
+      .select('id')
+      .or(`email.eq.${data.email},phone.eq.${data.phone || ''}`)
+      .limit(1)
+      .single();
+
     if (existing) {
       return c.json({ error: 'User already exists' }, 409);
     }
@@ -101,22 +110,25 @@ authRoutes.post('/register', async (c) => {
     const passwordHash = await hashPassword(data.password!);
     
     // Insert user
-    const result = await c.env.DB.prepare(
-      `INSERT INTO users (email, phone, password_hash, first_name, last_name, user_type, school_id, is_active, is_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      data.email,
-      data.phone || null,
-      passwordHash,
-      data.firstName,
-      data.lastName,
-      data.userType,
-      data.schoolId || null,
-      1,
-      0
-    ).run();
-    
-    const userId = result.meta.last_row_id;
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert({
+        email: data.email,
+        phone: data.phone || null,
+        password_hash: passwordHash,
+        first_name: data.firstName,
+        last_name: data.lastName,
+        user_type: data.userType,
+        school_id: data.schoolId || null,
+        is_active: true,
+        is_verified: false, // Default to not verified
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    const userId = newUser.id;
     
     // Generate token
     const token = await generateToken({
@@ -140,7 +152,8 @@ authRoutes.post('/register', async (c) => {
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Invalid input', details: error.errors }, 400);
     }
-    return c.json({ error: error.message }, 500);
+    console.error("Register error:", error);
+    return c.json({ error: 'Failed to register', details: error.message }, 500);
   }
 });
 
@@ -150,14 +163,13 @@ authRoutes.post('/logout', async (c) => {
     const sessionId = c.req.header('X-Session-Id');
     
     if (sessionId) {
-      await c.env.DB.prepare(
-        'DELETE FROM sessions WHERE session_id = ?'
-      ).bind(sessionId).run();
+      await supabase.from('sessions').delete().eq('session_id', sessionId);
     }
     
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Logout error:", error);
+    return c.json({ error: 'Failed to logout', details: error.message }, 500);
   }
 });
 
@@ -177,11 +189,14 @@ authRoutes.get('/me', async (c) => {
       return c.json({ error: 'Invalid token' }, 401);
     }
     
-    const user = await c.env.DB.prepare(
-      'SELECT id, email, phone, first_name, last_name, user_type, school_id FROM users WHERE id = ? AND is_active = 1'
-    ).bind(payload.userId).first();
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email, phone, first_name, last_name, user_type, school_id')
+      .eq('id', payload.userId)
+      .eq('is_active', true)
+      .single();
     
-    if (!user) {
+    if (error || !user) {
       return c.json({ error: 'User not found' }, 404);
     }
     
@@ -195,7 +210,8 @@ authRoutes.get('/me', async (c) => {
       schoolId: user.school_id,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Get me error:", error);
+    return c.json({ error: 'Failed to get user', details: error.message }, 500);
   }
 });
 

@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Bindings, UserSchema } from '../types';
-import { hashPassword, verifyPassword, generateToken, generateSessionId } from '../utils/auth';
+import { supabase } from '../../lib/supabase';
+import { hashPassword, verifyPassword, generateToken, verifyToken, generateSessionId } from '../utils/auth';
 import { EmailService, SMSService } from '../utils/email';
 import { VerificationService } from '../utils/verification';
 
@@ -34,52 +35,52 @@ authRoutes.post('/register', async (c) => {
     }
     
     // Check if user exists
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM users WHERE email = ? OR phone = ?'
-    ).bind(data.email, data.phone).first();
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .or(`email.eq.${data.email},phone.eq.${data.phone}`)
+      .single();
     
     if (existing) {
       return c.json({ error: 'User already exists with this email or phone number' }, 409);
     }
     
-    // Format phone number
     const formattedPhone = VerificationService.formatPhoneNumber(data.phone);
-    
-    // Hash password
     const passwordHash = await hashPassword(data.password);
-    
-    // Generate verification codes
     const emailCode = VerificationService.generateVerificationCode();
     const smsCode = VerificationService.generateVerificationCode();
     const verificationToken = VerificationService.generateVerificationToken();
     
     // Insert user (unverified)
-    const result = await c.env.DB.prepare(
-      `INSERT INTO users (
-        email, phone, password_hash, first_name, last_name, 
-        user_type, school_id, is_active, is_verified, 
-        verification_token, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-    ).bind(
-      data.email,
-      formattedPhone,
-      passwordHash,
-      data.firstName,
-      data.lastName,
-      data.userType,
-      data.schoolId || null,
-      1,
-      0, // Not verified yet
-      verificationToken
-    ).run();
-    
-    const userId = result.meta.last_row_id;
+    const { data: newUser, error: userInsertError } = await supabase
+      .from('users')
+      .insert({
+        email: data.email,
+        phone: formattedPhone,
+        password_hash: passwordHash,
+        first_name: data.firstName,
+        last_name: data.lastName,
+        user_type: data.userType,
+        school_id: data.schoolId || null,
+        is_active: true,
+        is_verified: false,
+        verification_token: verificationToken,
+      })
+      .select()
+      .single();
+
+    if (userInsertError) throw userInsertError;
+
+    const userId = newUser.id;
     
     // Store verification codes
-    await c.env.DB.prepare(
-      `INSERT INTO verification_codes (user_id, email_code, sms_code, expires_at)
-       VALUES (?, ?, ?, datetime('now', '+30 minutes'))`
-    ).bind(userId, emailCode, smsCode).run();
+    const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await supabase.from('verification_codes').insert({
+      user_id: userId,
+      email_code: emailCode,
+      sms_code: smsCode,
+      expires_at
+    });
     
     // Send verification email
     if (data.verificationMethod === 'email' || data.verificationMethod === 'both') {
@@ -118,7 +119,8 @@ authRoutes.post('/register', async (c) => {
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Invalid input', details: error.errors }, 400);
     }
-    return c.json({ error: error.message }, 500);
+    console.error("Register (enhanced) error:", error);
+    return c.json({ error: 'Failed to register', details: error.message }, 500);
   }
 });
 
@@ -127,17 +129,17 @@ authRoutes.post('/verify', async (c) => {
   try {
     const { userId, code, verificationType } = await c.req.json();
     
-    // Get verification codes
-    const verification = await c.env.DB.prepare(
-      `SELECT * FROM verification_codes 
-       WHERE user_id = ? AND expires_at > datetime('now')`
-    ).bind(userId).first();
-    
-    if (!verification) {
+    const { data: verification, error: verificationError } = await supabase
+      .from('verification_codes')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('expires_at', new Date().toISOString())
+      .single();
+
+    if (verificationError || !verification) {
       return c.json({ error: 'Verification code expired or not found' }, 400);
     }
     
-    // Check code based on type
     const isValidCode = verificationType === 'sms' 
       ? code === verification.sms_code
       : code === verification.email_code;
@@ -146,38 +148,23 @@ authRoutes.post('/verify', async (c) => {
       return c.json({ error: 'Invalid verification code' }, 400);
     }
     
-    // Mark user as verified
-    await c.env.DB.prepare(
-      'UPDATE users SET is_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(userId).run();
-    
-    // Delete used verification codes
-    await c.env.DB.prepare(
-      'DELETE FROM verification_codes WHERE user_id = ?'
-    ).bind(userId).run();
-    
-    // Get user for auto-login
-    const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE id = ?'
-    ).bind(userId).first();
-    
-    // Generate token for auto-login
-    const token = await generateToken({
-      userId: user.id,
-      email: user.email,
-      userType: user.user_type,
-    }, c.env.JWT_SECRET);
-    
-    // Create session
+    await supabase.from('users').update({ is_verified: true, updated_at: new Date().toISOString() }).eq('id', userId);
+    await supabase.from('verification_codes').delete().eq('user_id', userId);
+
+    const { data: user, error: userError } = await supabase.from('users').select('*').eq('id', userId).single();
+    if (userError || !user) {
+      return c.json({ error: 'Failed to retrieve user after verification' }, 500);
+    }
+
+    const token = await generateToken({ userId: user.id, email: user.email, userType: user.user_type }, c.env.JWT_SECRET);
     const sessionId = generateSessionId();
-    await c.env.DB.prepare(
-      'INSERT INTO sessions (session_id, user_id, data, expires_at) VALUES (?, ?, ?, ?)'
-    ).bind(
-      sessionId,
-      userId,
-      JSON.stringify({ token }),
-      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-    ).run();
+
+    await supabase.from('sessions').insert({
+      session_id: sessionId,
+      user_id: user.id,
+      data: { token },
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    });
     
     return c.json({
       success: true,
@@ -193,7 +180,8 @@ authRoutes.post('/verify', async (c) => {
       },
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Verify error:", error);
+    return c.json({ error: 'Failed to verify account', details: error.message }, 500);
   }
 });
 
@@ -202,46 +190,41 @@ authRoutes.post('/resend-verification', async (c) => {
   try {
     const { userId, verificationType } = await c.req.json();
     
-    // Get user
-    const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE id = ? AND is_verified = 0'
-    ).bind(userId).first();
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .eq('is_verified', false)
+      .single();
     
-    if (!user) {
+    if (userError || !user) {
       return c.json({ error: 'User not found or already verified' }, 404);
     }
     
-    // Generate new codes
     const emailCode = VerificationService.generateVerificationCode();
     const smsCode = VerificationService.generateVerificationCode();
     
-    // Delete old codes and insert new ones
-    await c.env.DB.prepare('DELETE FROM verification_codes WHERE user_id = ?').bind(userId).run();
-    await c.env.DB.prepare(
-      `INSERT INTO verification_codes (user_id, email_code, sms_code, expires_at)
-       VALUES (?, ?, ?, datetime('now', '+30 minutes'))`
-    ).bind(userId, emailCode, smsCode).run();
+    await supabase.from('verification_codes').delete().eq('user_id', userId);
+    await supabase.from('verification_codes').insert({
+      user_id: userId,
+      email_code: emailCode,
+      sms_code: smsCode,
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    });
     
-    // Send verification based on type
     if (verificationType === 'email') {
       const emailService = new EmailService({
         apiKey: c.env.RESEND_API_KEY || 'test-api-key',
         fromEmail: 'noreply@skooli.ug',
         fromName: 'Skooli',
       });
-      
-      await emailService.sendVerificationEmail(
-        user.email,
-        user.first_name,
-        emailCode
-      );
+      await emailService.sendVerificationEmail(user.email, user.first_name, emailCode);
     } else if (verificationType === 'sms') {
       const smsService = new SMSService({
         apiKey: c.env.AFRICASTALKING_API_KEY || 'test-api-key',
         username: c.env.AFRICASTALKING_USERNAME || 'skooli',
         sender: 'SKOOLI',
       });
-      
       await smsService.sendVerificationSMS(user.phone, smsCode);
     }
     
@@ -250,7 +233,8 @@ authRoutes.post('/resend-verification', async (c) => {
       message: `Verification code resent via ${verificationType}`,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Resend verification error:", error);
+    return c.json({ error: 'Failed to resend verification', details: error.message }, 500);
   }
 });
 
@@ -259,46 +243,42 @@ authRoutes.post('/forgot-password', async (c) => {
   try {
     const { email } = await c.req.json();
     
-    // Find user
-    const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE email = ?'
-    ).bind(email).first();
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
     
-    if (!user) {
-      // Don't reveal if email exists
+    // Don't reveal if email exists for security reasons
+    if (userError || !user) {
       return c.json({
         success: true,
         message: 'If an account exists with this email, you will receive a password reset link.',
       });
     }
     
-    // Generate reset token
     const resetToken = VerificationService.generatePasswordResetToken();
     
-    // Store reset token
-    await c.env.DB.prepare(
-      `UPDATE users SET reset_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(resetToken, user.id).run();
-    
-    // Send reset email
+    await supabase
+      .from('users')
+      .update({ reset_token: resetToken, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+
     const emailService = new EmailService({
       apiKey: c.env.RESEND_API_KEY || 'test-api-key',
       fromEmail: 'noreply@skooli.ug',
       fromName: 'Skooli',
     });
     
-    await emailService.sendPasswordResetEmail(
-      user.email,
-      user.first_name,
-      resetToken
-    );
+    await emailService.sendPasswordResetEmail(user.email, user.first_name, resetToken);
     
     return c.json({
       success: true,
       message: 'If an account exists with this email, you will receive a password reset link.',
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Forgot password error:", error);
+    return c.json({ error: 'Failed to process forgot password request', details: error.message }, 500);
   }
 });
 
@@ -307,7 +287,6 @@ authRoutes.post('/reset-password', async (c) => {
   try {
     const { token, newPassword } = await c.req.json();
     
-    // Validate new password
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (!passwordRegex.test(newPassword)) {
       return c.json({
@@ -315,29 +294,39 @@ authRoutes.post('/reset-password', async (c) => {
       }, 400);
     }
     
-    // Find user with reset token
-    const user = await c.env.DB.prepare(
-      `SELECT * FROM users WHERE reset_token = ? AND updated_at > datetime('now', '-1 hour')`
-    ).bind(token).first();
+    // Find user with reset token. Token expiry should be handled by a timestamp check.
+    // The original query had a 1-hour expiry which we'll replicate.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    if (!user) {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('reset_token', token)
+      .gt('updated_at', oneHourAgo)
+      .single();
+
+    if (userError || !user) {
       return c.json({ error: 'Invalid or expired reset token' }, 400);
     }
     
-    // Hash new password
     const passwordHash = await hashPassword(newPassword);
     
-    // Update password and clear reset token
-    await c.env.DB.prepare(
-      `UPDATE users SET password_hash = ?, reset_token = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(passwordHash, user.id).run();
+    await supabase
+      .from('users')
+      .update({
+        password_hash: passwordHash,
+        reset_token: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id);
     
     return c.json({
       success: true,
       message: 'Password reset successfully. You can now login with your new password.',
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Reset password error:", error);
+    return c.json({ error: 'Failed to reset password', details: error.message }, 500);
   }
 });
 
@@ -346,16 +335,17 @@ authRoutes.post('/login', async (c) => {
   try {
     const { email, password, twoFactorCode } = await c.req.json();
     
-    // Find user
-    const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE email = ? AND is_active = 1'
-    ).bind(email).first();
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('is_active', true)
+      .single();
     
-    if (!user) {
+    if (userError || !user) {
       return c.json({ error: 'Invalid credentials' }, 401);
     }
     
-    // Check if user is verified
     if (!user.is_verified) {
       return c.json({ 
         error: 'Please verify your account first',
@@ -364,53 +354,32 @@ authRoutes.post('/login', async (c) => {
       }, 403);
     }
     
-    // Verify password
     const isValid = await verifyPassword(password, user.password_hash as string);
     if (!isValid) {
       return c.json({ error: 'Invalid credentials' }, 401);
     }
     
-    // Check 2FA if enabled
     if (user.two_factor_enabled) {
       if (!twoFactorCode) {
-        return c.json({ 
-          requires2FA: true,
-          message: 'Please enter your 2FA code',
-        }, 200);
+        return c.json({ requires2FA: true, message: 'Please enter your 2FA code' }, 200);
       }
-      
-      const isValid2FA = VerificationService.verify2FAToken(
-        user.two_factor_secret,
-        twoFactorCode
-      );
-      
+      const isValid2FA = VerificationService.verify2FAToken(user.two_factor_secret, twoFactorCode);
       if (!isValid2FA) {
         return c.json({ error: 'Invalid 2FA code' }, 401);
       }
     }
     
-    // Generate token
-    const token = await generateToken({
-      userId: user.id,
-      email: user.email,
-      userType: user.user_type,
-    }, c.env.JWT_SECRET);
+    const token = await generateToken({ userId: user.id, email: user.email, userType: user.user_type }, c.env.JWT_SECRET);
     
-    // Update last login
-    await c.env.DB.prepare(
-      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(user.id).run();
+    await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id);
     
-    // Create session
     const sessionId = generateSessionId();
-    await c.env.DB.prepare(
-      'INSERT INTO sessions (session_id, user_id, data, expires_at) VALUES (?, ?, ?, ?)'
-    ).bind(
-      sessionId,
-      user.id,
-      JSON.stringify({ token }),
-      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-    ).run();
+    await supabase.from('sessions').insert({
+      session_id: sessionId,
+      user_id: user.id,
+      data: { token },
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    });
     
     return c.json({
       success: true,
@@ -426,25 +395,25 @@ authRoutes.post('/login', async (c) => {
       },
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Login (enhanced) error:", error);
+    return c.json({ error: 'Failed to login', details: error.message }, 500);
   }
 });
 
 // Enable 2FA
 authRoutes.post('/enable-2fa', async (c) => {
   try {
-    const user = await getUserFromToken(c);
+    const user = await getUserFromToken(c as any); // Cast to any to avoid ts issue
     if (!user) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
     
-    // Generate 2FA secret
     const { secret, qrCode } = VerificationService.generate2FASecret(user.email);
     
-    // Store secret (not enabled yet)
-    await c.env.DB.prepare(
-      `UPDATE users SET two_factor_secret = ? WHERE id = ?`
-    ).bind(secret, user.id).run();
+    await supabase
+      .from('users')
+      .update({ two_factor_secret: secret })
+      .eq('id', user.id);
     
     return c.json({
       success: true,
@@ -453,41 +422,39 @@ authRoutes.post('/enable-2fa', async (c) => {
       message: 'Scan the QR code with your authenticator app, then verify with a code',
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Enable 2FA error:", error);
+    return c.json({ error: 'Failed to enable 2FA', details: error.message }, 500);
   }
 });
 
 // Verify and activate 2FA
 authRoutes.post('/verify-2fa', async (c) => {
   try {
-    const user = await getUserFromToken(c);
+    const user = await getUserFromToken(c as any); // Cast to any to avoid ts issue
     if (!user) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
     
     const { code } = await c.req.json();
     
-    // Verify the code
     const isValid = VerificationService.verify2FAToken(user.two_factor_secret, code);
     
     if (!isValid) {
       return c.json({ error: 'Invalid code' }, 400);
     }
     
-    // Enable 2FA
-    await c.env.DB.prepare(
-      `UPDATE users SET two_factor_enabled = 1 WHERE id = ?`
-    ).bind(user.id).run();
-    
-    // Generate backup codes
+    await supabase
+      .from('users')
+      .update({ two_factor_enabled: true })
+      .eq('id', user.id);
+
     const backupCodes = Array.from({ length: 10 }, () => 
       VerificationService.generateVerificationCode()
     );
     
-    // Store backup codes
-    await c.env.DB.prepare(
-      `INSERT INTO backup_codes (user_id, codes) VALUES (?, ?)`
-    ).bind(user.id, JSON.stringify(backupCodes)).run();
+    await supabase
+      .from('backup_codes')
+      .insert({ user_id: user.id, codes: JSON.stringify(backupCodes) });
     
     return c.json({
       success: true,
@@ -495,7 +462,8 @@ authRoutes.post('/verify-2fa', async (c) => {
       backupCodes,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Verify 2FA error:", error);
+    return c.json({ error: 'Failed to verify 2FA', details: error.message }, 500);
   }
 });
 
@@ -513,9 +481,14 @@ async function getUserFromToken(c: any): Promise<any> {
     return null;
   }
   
-  return await c.env.DB.prepare(
-    'SELECT * FROM users WHERE id = ? AND is_active = 1'
-  ).bind(payload.userId).first();
+  const { data: user } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', payload.userId)
+    .eq('is_active', true)
+    .single();
+
+  return user;
 }
 
 export default authRoutes;

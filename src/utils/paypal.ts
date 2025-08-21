@@ -1,4 +1,6 @@
-import paypal from '@paypal/checkout-server-sdk';
+import * as payPalCore from '@paypal/checkout-server-sdk/core';
+import * as payPalOrders from '@paypal/checkout-server-sdk/orders';
+import * as payPalPayments from '@paypal/checkout-server-sdk/payments';
 
 interface PayPalConfig {
   clientId: string;
@@ -7,14 +9,14 @@ interface PayPalConfig {
 }
 
 export class PayPalService {
-  private client: paypal.core.PayPalHttpClient;
+  private client: any;
   
   constructor(config: PayPalConfig) {
     const environment = config.environment === 'production'
-      ? new paypal.core.LiveEnvironment(config.clientId, config.clientSecret)
-      : new paypal.core.SandboxEnvironment(config.clientId, config.clientSecret);
+      ? new payPalCore.LiveEnvironment(config.clientId, config.clientSecret)
+      : new payPalCore.SandboxEnvironment(config.clientId, config.clientSecret);
     
-    this.client = new paypal.core.PayPalHttpClient(environment);
+    this.client = new payPalCore.PayPalHttpClient(environment);
   }
   
   async createOrder(
@@ -23,7 +25,7 @@ export class PayPalService {
     currency: string = 'USD',
     items: any[] = []
   ): Promise<{ id: string; status: string; links: any[] }> {
-    const request = new paypal.orders.OrdersCreateRequest();
+    const request = new payPalOrders.OrdersCreateRequest();
     request.prefer('return=representation');
     
     // Convert UGX to USD (approximate rate, should use real-time rates in production)
@@ -82,7 +84,7 @@ export class PayPalService {
     payer: any;
     purchase_units: any[];
   }> {
-    const request = new paypal.orders.OrdersCaptureRequest(paypalOrderId);
+    const request = new payPalOrders.OrdersCaptureRequest(paypalOrderId);
     request.requestBody({});
     
     try {
@@ -100,7 +102,7 @@ export class PayPalService {
   }
   
   async getOrderDetails(paypalOrderId: string): Promise<any> {
-    const request = new paypal.orders.OrdersGetRequest(paypalOrderId);
+    const request = new payPalOrders.OrdersGetRequest(paypalOrderId);
     
     try {
       const response = await this.client.execute(request);
@@ -116,7 +118,7 @@ export class PayPalService {
     status: string;
     amount: any;
   }> {
-    const request = new paypal.payments.CapturesRefundRequest(captureId);
+    const request = new payPalPayments.CapturesRefundRequest(captureId);
     
     if (amount) {
       request.requestBody({

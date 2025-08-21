@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
 import { getUserFromToken } from '../utils/auth';
+import { supabase } from '../../lib/supabase';
+import { Context } from 'hono';
 
 const adminRoutes = new Hono<{ Bindings: Bindings }>();
 
 // Middleware to check admin access
-async function requireAdmin(c: any, next: any) {
+async function requireAdmin(c: Context, next: Function) {
   const user = await getUserFromToken(c);
   if (!user || user.user_type !== 'admin') {
     return c.json({ error: 'Admin access required' }, 403);
@@ -17,23 +19,24 @@ async function requireAdmin(c: any, next: any) {
 // Dashboard stats
 adminRoutes.get('/dashboard', requireAdmin, async (c) => {
   try {
-    // Get stats
-    const stats = await Promise.all([
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM orders').first(),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM users WHERE user_type = "parent"').first(),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM products WHERE is_active = 1').first(),
-      c.env.DB.prepare('SELECT SUM(total_amount) as total FROM orders WHERE payment_status = "paid"').first(),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM orders WHERE status = "pending"').first(),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM orders WHERE created_at >= datetime("now", "-7 days")').first(),
-    ]);
+    const { data: totalOrders, count: totalOrdersCount } = await supabase.from('orders').select('id', { count: 'exact' });
+    const { data: totalCustomers, count: totalCustomersCount } = await supabase.from('users').select('id', { count: 'exact' }).eq('user_type', 'parent');
+    const { data: totalProducts, count: totalProductsCount } = await supabase.from('products').select('id', { count: 'exact' }).eq('is_active', true);
+    const { data: revenueData, error: revenueError } = await supabase.from('orders').select('total_amount').eq('payment_status', 'paid');
+    const { data: pendingOrders, count: pendingOrdersCount } = await supabase.from('orders').select('id', { count: 'exact' }).eq('status', 'pending');
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: weeklyOrders, count: weeklyOrdersCount } = await supabase.from('orders').select('id', { count: 'exact' }).gte('created_at', sevenDaysAgo);
+
+    const totalRevenue = revenueData ? revenueData.reduce((sum, r) => sum + r.total_amount, 0) : 0;
     
     return c.json({
-      totalOrders: stats[0]?.count || 0,
-      totalCustomers: stats[1]?.count || 0,
-      totalProducts: stats[2]?.count || 0,
-      totalRevenue: stats[3]?.total || 0,
-      pendingOrders: stats[4]?.count || 0,
-      weeklyOrders: stats[5]?.count || 0,
+      totalOrders: totalOrdersCount || 0,
+      totalCustomers: totalCustomersCount || 0,
+      totalProducts: totalProductsCount || 0,
+      totalRevenue,
+      pendingOrders: pendingOrdersCount || 0,
+      weeklyOrders: weeklyOrdersCount || 0,
     });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -48,25 +51,23 @@ adminRoutes.get('/orders', requireAdmin, async (c) => {
     const limit = parseInt(c.req.query('limit') || '20');
     const offset = (page - 1) * limit;
     
-    let query = `
-      SELECT o.*, u.email, u.first_name, u.last_name 
-      FROM orders o 
-      JOIN users u ON o.user_id = u.id
-    `;
-    
-    const params: any[] = [];
+    let query = supabase
+      .from('orders')
+      .select(`
+        *,
+        users ( email, first_name, last_name )
+      `)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     
     if (status) {
-      query += ' WHERE o.status = ?';
-      params.push(status);
+      query = query.eq('status', status);
     }
     
-    query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    const { data: orders, error } = await query;
+    if (error) throw error;
     
-    const orders = await c.env.DB.prepare(query).bind(...params).all();
-    
-    return c.json(orders.results);
+    return c.json(orders || []);
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }
@@ -78,24 +79,20 @@ adminRoutes.put('/orders/:id/status', requireAdmin, async (c) => {
     const orderId = c.req.param('id');
     const { status, trackingNumber, deliveryDate } = await c.req.json();
     
-    const updates = ['status = ?', 'updated_at = CURRENT_TIMESTAMP'];
-    const params = [status];
+    const updates: { [key: string]: any } = {
+      status,
+      updated_at: new Date().toISOString()
+    };
     
-    if (trackingNumber) {
-      updates.push('tracking_number = ?');
-      params.push(trackingNumber);
-    }
+    if (trackingNumber) updates.tracking_number = trackingNumber;
+    if (deliveryDate) updates.delivery_date = deliveryDate;
     
-    if (deliveryDate) {
-      updates.push('delivery_date = ?');
-      params.push(deliveryDate);
-    }
-    
-    params.push(orderId);
-    
-    await c.env.DB.prepare(
-      `UPDATE orders SET ${updates.join(', ')} WHERE id = ?`
-    ).bind(...params).run();
+    const { error } = await supabase
+      .from('orders')
+      .update(updates)
+      .eq('id', orderId);
+
+    if (error) throw error;
     
     return c.json({ success: true });
   } catch (error: any) {
@@ -108,25 +105,28 @@ adminRoutes.post('/products', requireAdmin, async (c) => {
   try {
     const product = await c.req.json();
     
-    const result = await c.env.DB.prepare(
-      `INSERT INTO products (sku, name, description, category_id, price, compare_price, stock_quantity, unit, brand, image_url, is_active, is_featured)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      product.sku,
-      product.name,
-      product.description || null,
-      product.categoryId || null,
-      product.price,
-      product.comparePrice || null,
-      product.stockQuantity || 0,
-      product.unit || 'piece',
-      product.brand || null,
-      product.imageUrl || null,
-      product.isActive ? 1 : 0,
-      product.isFeatured ? 1 : 0
-    ).run();
-    
-    return c.json({ success: true, id: result.meta.last_row_id });
+    const { data: newProduct, error } = await supabase
+      .from('products')
+      .insert({
+        sku: product.sku,
+        name: product.name,
+        description: product.description || null,
+        category_id: product.categoryId || null,
+        price: product.price,
+        compare_price: product.comparePrice || null,
+        stock_quantity: product.stockQuantity || 0,
+        unit: product.unit || 'piece',
+        brand: product.brand || null,
+        image_url: product.imageUrl || null,
+        is_active: product.isActive,
+        is_featured: product.isFeatured,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return c.json({ success: true, id: newProduct.id });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }
@@ -138,20 +138,20 @@ adminRoutes.put('/products/:id', requireAdmin, async (c) => {
     const productId = c.req.param('id');
     const updates = await c.req.json();
     
-    const fields = [];
-    const params = [];
-    
+    // Convert camelCase to snake_case for Supabase
+    const snakeCaseUpdates: { [key: string]: any } = {};
     for (const [key, value] of Object.entries(updates)) {
       const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-      fields.push(`${snakeKey} = ?`);
-      params.push(value);
+      snakeCaseUpdates[snakeKey] = value;
     }
+    snakeCaseUpdates.updated_at = new Date().toISOString();
     
-    params.push(productId);
-    
-    await c.env.DB.prepare(
-      `UPDATE products SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(...params).run();
+    const { error } = await supabase
+      .from('products')
+      .update(snakeCaseUpdates)
+      .eq('id', productId);
+
+    if (error) throw error;
     
     return c.json({ success: true });
   } catch (error: any) {
@@ -162,22 +162,26 @@ adminRoutes.put('/products/:id', requireAdmin, async (c) => {
 // Get inventory levels
 adminRoutes.get('/inventory', requireAdmin, async (c) => {
   try {
-    const lowStock = await c.env.DB.prepare(
-      `SELECT id, sku, name, stock_quantity 
-       FROM products 
-       WHERE is_active = 1 AND stock_quantity < 10 
-       ORDER BY stock_quantity`
-    ).all();
-    
-    const outOfStock = await c.env.DB.prepare(
-      `SELECT id, sku, name 
-       FROM products 
-       WHERE is_active = 1 AND stock_quantity = 0`
-    ).all();
+    const { data: lowStock, error: lowStockError } = await supabase
+      .from('products')
+      .select('id, sku, name, stock_quantity')
+      .eq('is_active', true)
+      .lt('stock_quantity', 10)
+      .order('stock_quantity');
+
+    if (lowStockError) throw lowStockError;
+
+    const { data: outOfStock, error: outOfStockError } = await supabase
+      .from('products')
+      .select('id, sku, name')
+      .eq('is_active', true)
+      .eq('stock_quantity', 0);
+
+    if (outOfStockError) throw outOfStockError;
     
     return c.json({
-      lowStock: lowStock.results,
-      outOfStock: outOfStock.results,
+      lowStock: lowStock || [],
+      outOfStock: outOfStock || [],
     });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);

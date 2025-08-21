@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
+import { supabase } from '../../lib/supabase';
 import { getUserFromToken, generateOrderNumber } from '../utils/auth';
 import { MoMoPaymentService } from '../utils/momo';
 import { PayPalService } from '../utils/paypal';
@@ -188,60 +189,64 @@ checkoutRoutes.post('/process', async (c) => {
     } = body;
     
     // Get user's cart
-    const cart = await c.env.DB.prepare(
-      'SELECT * FROM carts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1'
-    ).bind(user.id).first();
+    const { data: cart, error: cartError } = await supabase
+      .from('carts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
     
-    if (!cart || !cart.items) {
+    if (cartError || !cart || !cart.items) {
       return c.json({ error: 'Cart is empty' }, 400);
     }
     
-    const items = JSON.parse(cart.items as string);
+    const items = cart.items as any[];
     
     // Calculate totals
-    const subtotal = parseFloat(cart.total_amount as string);
+    const subtotal = cart.total_amount;
     const taxAmount = subtotal * 0.18;
     const shippingFee = 15000;
     const totalAmount = subtotal + taxAmount + shippingFee;
     
     // Create order
     const orderNumber = generateOrderNumber();
-    const orderResult = await c.env.DB.prepare(
-      `INSERT INTO orders (
-        order_number, user_id, student_id, school_id,
-        status, payment_status, payment_method,
-        subtotal, tax_amount, shipping_fee, total_amount,
-        shipping_address, billing_address, delivery_notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      orderNumber,
-      user.id,
-      studentId || null,
-      schoolId || null,
-      'pending',
-      'pending',
-      paymentMethod,
-      subtotal,
-      taxAmount,
-      shippingFee,
-      totalAmount,
-      JSON.stringify(shippingAddress),
-      JSON.stringify(billingAddress || shippingAddress),
-      deliveryNotes || null
-    ).run();
-    
-    const orderId = orderResult.meta.last_row_id;
+    const { data: newOrder, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        order_number: orderNumber,
+        user_id: user.id,
+        student_id: studentId || null,
+        school_id: schoolId || null,
+        status: 'pending',
+        payment_status: 'pending',
+        payment_method: paymentMethod,
+        subtotal,
+        tax_amount: taxAmount,
+        shipping_fee: shippingFee,
+        total_amount: totalAmount,
+        shipping_address: shippingAddress,
+        billing_address: billingAddress || shippingAddress,
+        delivery_notes: deliveryNotes || null,
+      })
+      .select()
+      .single();
+
+    if (orderError) throw orderError;
+    const orderId = newOrder.id;
     
     // Create order items
-    for (const item of items) {
-      await c.env.DB.prepare(
-        `INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price)
-         VALUES (?, ?, ?, ?, ?)`
-      ).bind(orderId, item.productId, item.quantity, item.price, item.price * item.quantity).run();
-    }
+    const orderItems = items.map(item => ({
+      order_id: orderId,
+      product_id: item.productId,
+      quantity: item.quantity,
+      unit_price: item.price,
+      total_price: item.price * item.quantity,
+    }));
+    await supabase.from('order_items').insert(orderItems);
     
     // Process payment based on method
-    let paymentResult;
+    let paymentResult: any;
     
     switch (paymentMethod) {
       case 'momo':
@@ -251,66 +256,40 @@ checkoutRoutes.post('/process', async (c) => {
           apiUrl: c.env.MOMO_API_URL || 'https://sandbox.momodeveloper.mtn.com',
           environment: c.env.MOMO_API_KEY ? 'production' : 'sandbox',
         });
-        
-        paymentResult = await momoService.requestPayment(
-          orderNumber,
-          paymentDetails.phoneNumber,
-          totalAmount,
-          'UGX',
-          `Payment for order ${orderNumber}`
-        );
+        paymentResult = await momoService.requestPayment(orderNumber, paymentDetails.phoneNumber, totalAmount, 'UGX', `Payment for order ${orderNumber}`);
         break;
-        
       case 'card':
         const stripeService = new StripeService({
           secretKey: c.env.STRIPE_SECRET_KEY || 'sk_test_...',
           webhookSecret: c.env.STRIPE_WEBHOOK_SECRET,
         });
-        
-        paymentResult = await stripeService.createPaymentIntent(
-          orderNumber,
-          totalAmount,
-          'ugx',
-          user.email,
-          { orderId }
-        );
+        paymentResult = await stripeService.createPaymentIntent(orderNumber, totalAmount, 'ugx', user.email, { orderId });
         break;
-        
       case 'paypal':
         const paypalService = new PayPalService({
           clientId: c.env.PAYPAL_CLIENT_ID || 'test-client-id',
           clientSecret: c.env.PAYPAL_CLIENT_SECRET || 'test-client-secret',
           environment: c.env.PAYPAL_CLIENT_ID ? 'production' : 'sandbox',
         });
-        
-        paymentResult = await paypalService.createOrder(
-          orderNumber,
-          totalAmount,
-          'UGX',
-          items
-        );
+        paymentResult = await paypalService.createOrder(orderNumber, totalAmount, 'UGX', items);
         break;
-        
       default:
         return c.json({ error: 'Invalid payment method' }, 400);
     }
     
     // Save payment record
-    await c.env.DB.prepare(
-      `INSERT INTO payments (order_id, transaction_id, payment_method, amount, currency, status, provider_response)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      orderId,
-      paymentResult.id || `PENDING-${Date.now()}`,
-      paymentMethod,
-      totalAmount,
-      'UGX',
-      'pending',
-      JSON.stringify(paymentResult)
-    ).run();
+    await supabase.from('payments').insert({
+      order_id: orderId,
+      transaction_id: (paymentResult as any)?.id || (paymentResult as any)?.financialTransactionId || `PENDING-${Date.now()}`,
+      payment_method: paymentMethod,
+      amount: totalAmount,
+      currency: 'UGX',
+      status: 'pending',
+      provider_response: paymentResult,
+    });
     
     // Clear cart
-    await c.env.DB.prepare('DELETE FROM carts WHERE id = ?').bind(cart.id).run();
+    await supabase.from('carts').delete().eq('id', cart.id);
     
     // Send order confirmation email
     const emailService = new EmailService({
@@ -319,13 +298,7 @@ checkoutRoutes.post('/process', async (c) => {
       fromName: 'Skooli Orders',
     });
     
-    await emailService.sendOrderConfirmationEmail(
-      user.email,
-      user.first_name,
-      orderNumber,
-      totalAmount,
-      items
-    );
+    await emailService.sendOrderConfirmationEmail(user.email, user.first_name, orderNumber, totalAmount, items);
     
     return c.json({
       success: true,
@@ -336,7 +309,7 @@ checkoutRoutes.post('/process', async (c) => {
     });
   } catch (error: any) {
     console.error('Checkout error:', error);
-    return c.json({ error: error.message }, 500);
+    return c.json({ error: 'Failed to process checkout', details: error.message }, 500);
   }
 });
 

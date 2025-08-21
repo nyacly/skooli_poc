@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Environment bindings
 export type Bindings = {
+  DB: any; // Temporary shim for D1 compatibility
   MOMO_API_KEY?: string;
   MOMO_API_SECRET?: string;
   MOMO_API_URL?: string;
@@ -125,6 +126,7 @@ export type SchoolListItem = z.infer<typeof SchoolListItemSchema>;
 // Payment types
 export const PaymentRequestSchema = z.object({
   orderId: z.number(),
+  paymentMethod: z.string().optional(),
   phoneNumber: z.string(),
   amount: z.number(),
   currency: z.string().default('UGX'),

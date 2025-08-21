@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
+import { supabase } from '../../lib/supabase';
 
 const productRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -12,66 +13,45 @@ productRoutes.get('/', async (c) => {
     const page = parseInt(c.req.query('page') || '1');
     const limit = parseInt(c.req.query('limit') || '20');
     const offset = (page - 1) * limit;
-    
-    let query = 'SELECT * FROM products WHERE is_active = 1';
-    const params: any[] = [];
-    
+
+    let query = supabase
+      .from('products')
+      .select('*', { count: 'exact' })
+      .eq('is_active', true)
+      .order('is_featured', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
     if (categoryId) {
-      query += ' AND category_id = ?';
-      params.push(categoryId);
+      query = query.eq('category_id', categoryId);
     }
-    
+
     if (search) {
-      query += ' AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)';
-      const searchParam = `%${search}%`;
-      params.push(searchParam, searchParam, searchParam);
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,tags.ilike.%${search}%`);
     }
-    
+
     if (featured === 'true') {
-      query += ' AND is_featured = 1';
+      query = query.eq('is_featured', true);
     }
-    
-    query += ' ORDER BY is_featured DESC, created_at DESC';
-    query += ' LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-    
-    const stmt = c.env.DB.prepare(query);
-    const products = await stmt.bind(...params).all();
-    
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) as total FROM products WHERE is_active = 1';
-    const countParams: any[] = [];
-    
-    if (categoryId) {
-      countQuery += ' AND category_id = ?';
-      countParams.push(categoryId);
+
+    const { data: products, error, count } = await query;
+
+    if (error) {
+      throw error;
     }
-    
-    if (search) {
-      countQuery += ' AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)';
-      const searchParam = `%${search}%`;
-      countParams.push(searchParam, searchParam, searchParam);
-    }
-    
-    if (featured === 'true') {
-      countQuery += ' AND is_featured = 1';
-    }
-    
-    const countStmt = c.env.DB.prepare(countQuery);
-    const countResult = await countStmt.bind(...countParams).first();
-    const total = countResult?.total || 0;
-    
+
     return c.json({
-      products: products.results,
+      products: products || [],
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit),
+        total: count || 0,
+        pages: Math.ceil((count || 0) / limit),
       },
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error('Get products error:', error);
+    return c.json({ error: 'Failed to fetch products', details: error.message }, 500);
   }
 });
 
@@ -80,106 +60,116 @@ productRoutes.get('/:id', async (c) => {
   try {
     const id = c.req.param('id');
     
-    const product = await c.env.DB.prepare(
-      'SELECT * FROM products WHERE id = ? AND is_active = 1'
-    ).bind(id).first();
-    
-    if (!product) {
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !product) {
       return c.json({ error: 'Product not found' }, 404);
     }
     
-    // Parse JSON fields
-    if (product.images) {
-      product.images = JSON.parse(product.images as string);
-    }
-    if (product.specifications) {
-      product.specifications = JSON.parse(product.specifications as string);
-    }
-    if (product.tags) {
-      product.tags = JSON.parse(product.tags as string);
-    }
+    // The Supabase client automatically parses JSON fields, so no manual parsing is needed.
     
     return c.json(product);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error('Get single product error:', error);
+    return c.json({ error: 'Failed to fetch product', details: error.message }, 500);
   }
 });
 
 // Get all categories
 productRoutes.get('/categories/all', async (c) => {
   try {
-    const categories = await c.env.DB.prepare(
-      'SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order, name'
-    ).all();
+    const { data: categories, error } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name');
+
+    if (error) {
+      throw error;
+    }
     
-    return c.json(categories.results);
+    return c.json(categories || []);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error('Get categories error:', error);
+    return c.json({ error: 'Failed to fetch categories', details: error.message }, 500);
   }
 });
 
-// Search products
+// Search products (re-uses the main GET / endpoint logic, but can be kept for compatibility)
 productRoutes.post('/search', async (c) => {
   try {
-    const { query, filters } = await c.req.json();
+    const { query: searchQuery, filters } = await c.req.json();
     
-    if (!query) {
+    if (!searchQuery) {
       return c.json({ error: 'Search query required' }, 400);
     }
     
-    let sql = `
-      SELECT p.*, c.name as category_name 
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      WHERE p.is_active = 1 
-      AND (p.name LIKE ? OR p.description LIKE ? OR p.brand LIKE ? OR p.tags LIKE ?)
-    `;
-    
-    const params: any[] = [];
-    const searchParam = `%${query}%`;
-    params.push(searchParam, searchParam, searchParam, searchParam);
+    let query = supabase
+      .from('products')
+      .select('*, categories(name)')
+      .eq('is_active', true)
+      .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,brand.ilike.%${searchQuery}%,tags.ilike.%${searchQuery}%`)
+      .order('is_featured', { ascending: false })
+      .order('name')
+      .limit(50);
     
     if (filters?.categoryId) {
-      sql += ' AND p.category_id = ?';
-      params.push(filters.categoryId);
+      query = query.eq('category_id', filters.categoryId);
     }
     
     if (filters?.minPrice) {
-      sql += ' AND p.price >= ?';
-      params.push(filters.minPrice);
+      query = query.gte('price', filters.minPrice);
     }
     
     if (filters?.maxPrice) {
-      sql += ' AND p.price <= ?';
-      params.push(filters.maxPrice);
+      query = query.lte('price', filters.maxPrice);
     }
     
     if (filters?.brand) {
-      sql += ' AND p.brand = ?';
-      params.push(filters.brand);
+      query = query.eq('brand', filters.brand);
     }
     
-    sql += ' ORDER BY p.is_featured DESC, p.name';
-    sql += ' LIMIT 50';
+    const { data: products, error } = await query;
+
+    if (error) {
+      throw error;
+    }
     
-    const products = await c.env.DB.prepare(sql).bind(...params).all();
-    
-    return c.json(products.results);
+    return c.json(products || []);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error('Search products error:', error);
+    return c.json({ error: 'Failed to search products', details: error.message }, 500);
   }
 });
 
 // Get brands
 productRoutes.get('/brands/all', async (c) => {
   try {
-    const brands = await c.env.DB.prepare(
-      'SELECT DISTINCT brand FROM products WHERE brand IS NOT NULL AND is_active = 1 ORDER BY brand'
-    ).all();
+    // Supabase doesn't have a direct DISTINCT ON equivalent in the query builder for a single column.
+    // A simple way is to fetch all brands and process them, or use an RPC.
+    // For simplicity, we fetch and process here.
+    const { data, error } = await supabase
+      .from('products')
+      .select('brand')
+      .eq('is_active', true)
+      .not('brand', 'is', null);
+
+    if (error) {
+      throw error;
+    }
+
+    const brands = [...new Set(data.map(p => p.brand))].sort();
     
-    return c.json(brands.results.map(b => b.brand));
+    return c.json(brands);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error('Get brands error:', error);
+    return c.json({ error: 'Failed to fetch brands', details: error.message }, 500);
   }
 });
 

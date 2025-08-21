@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Bindings, PaymentRequestSchema } from '../types';
+import { supabase } from '../../lib/supabase';
 import { getUserFromToken } from '../utils/auth';
 import { MoMoPaymentService } from '../utils/momo';
 
@@ -17,11 +18,14 @@ paymentRoutes.post('/initiate', async (c) => {
     const { orderId, phoneNumber, paymentMethod = 'momo' } = PaymentRequestSchema.parse(body);
     
     // Get order
-    const order = await c.env.DB.prepare(
-      'SELECT * FROM orders WHERE id = ? AND user_id = ?'
-    ).bind(orderId, user.id).first();
-    
-    if (!order) {
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (orderError || !order) {
       return c.json({ error: 'Order not found' }, 404);
     }
     
@@ -37,40 +41,43 @@ paymentRoutes.post('/initiate', async (c) => {
       environment: c.env.MOMO_API_KEY ? 'production' : 'sandbox',
     });
     
-    // Request payment
-    const paymentResponse = await momoService.requestPayment(
-      order.order_number as string,
-      phoneNumber,
-      order.total_amount as number,
-      'UGX',
-      `Payment for Skooli order ${order.order_number}`
-    );
+    const paymentResponse = await momoService.requestPayment(order.order_number, phoneNumber, order.total_amount, 'UGX', `Payment for Skooli order ${order.order_number}`);
     
     // Save payment record
-    const paymentResult = await c.env.DB.prepare(
-      `INSERT INTO payments (order_id, transaction_id, payment_method, amount, currency, status, provider_response, momo_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      orderId,
-      paymentResponse.financialTransactionId || `PENDING-${Date.now()}`,
-      paymentMethod,
-      order.total_amount,
-      'UGX',
-      paymentResponse.status === 'SUCCESSFUL' ? 'success' : 'pending',
-      JSON.stringify(paymentResponse),
-      phoneNumber
-    ).run();
-    
+    const { data: newPayment, error: paymentInsertError } = await supabase
+      .from('payments')
+      .insert({
+        order_id: orderId,
+        transaction_id: paymentResponse.financialTransactionId || `PENDING-${Date.now()}`,
+        payment_method: paymentMethod,
+        amount: order.total_amount,
+        currency: 'UGX',
+        status: paymentResponse.status === 'SUCCESSFUL' ? 'success' : 'pending',
+        provider_response: paymentResponse as any,
+        momo_number: phoneNumber,
+      })
+      .select()
+      .single();
+
+    if (paymentInsertError) throw paymentInsertError;
+
     // Update order payment status if successful
     if (paymentResponse.status === 'SUCCESSFUL') {
-      await c.env.DB.prepare(
-        'UPDATE orders SET payment_status = ?, payment_method = ?, payment_reference = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind('paid', paymentMethod, paymentResponse.financialTransactionId, 'processing', orderId).run();
+      await supabase
+        .from('orders')
+        .update({
+          payment_status: 'paid',
+          payment_method: paymentMethod,
+          payment_reference: paymentResponse.financialTransactionId,
+          status: 'processing',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
     }
     
     return c.json({
       success: true,
-      paymentId: paymentResult.meta.last_row_id,
+      paymentId: newPayment.id,
       status: paymentResponse.status,
       transactionId: paymentResponse.financialTransactionId,
       message: paymentResponse.status === 'SUCCESSFUL' 
@@ -81,7 +88,8 @@ paymentRoutes.post('/initiate', async (c) => {
     if (error.name === 'ZodError') {
       return c.json({ error: 'Invalid input', details: error.errors }, 400);
     }
-    return c.json({ error: error.message }, 500);
+    console.error("Initiate payment error:", error);
+    return c.json({ error: 'Failed to initiate payment', details: error.message }, 500);
   }
 });
 
@@ -95,15 +103,15 @@ paymentRoutes.get('/status/:paymentId', async (c) => {
     
     const paymentId = c.req.param('paymentId');
     
-    // Get payment record
-    const payment = await c.env.DB.prepare(
-      `SELECT p.*, o.user_id 
-       FROM payments p 
-       JOIN orders o ON p.order_id = o.id 
-       WHERE p.id = ? AND o.user_id = ?`
-    ).bind(paymentId, user.id).first();
+    // Get payment record and verify ownership via order
+    const { data: payment, error: paymentError } = await supabase
+      .from('payments')
+      .select('*, orders!inner(user_id)')
+      .eq('id', paymentId)
+      .eq('orders.user_id', user.id)
+      .single();
     
-    if (!payment) {
+    if (paymentError || !payment) {
       return c.json({ error: 'Payment not found' }, 404);
     }
     
@@ -118,21 +126,19 @@ paymentRoutes.get('/status/:paymentId', async (c) => {
       
       const statusResponse = await momoService.checkPaymentStatus(payment.transaction_id as string);
       
-      // Update payment status
       if (statusResponse.status !== payment.status) {
-        await c.env.DB.prepare(
-          'UPDATE payments SET status = ?, provider_response = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(
-          statusResponse.status === 'SUCCESSFUL' ? 'success' : statusResponse.status === 'FAILED' ? 'failed' : 'pending',
-          JSON.stringify(statusResponse),
-          paymentId
-        ).run();
+        const newStatus = statusResponse.status === 'SUCCESSFUL' ? 'success' : statusResponse.status === 'FAILED' ? 'failed' : 'pending';
+
+        await supabase
+          .from('payments')
+          .update({ status: newStatus, provider_response: statusResponse as any, updated_at: new Date().toISOString() })
+          .eq('id', paymentId);
         
-        // Update order if payment successful
         if (statusResponse.status === 'SUCCESSFUL') {
-          await c.env.DB.prepare(
-            'UPDATE orders SET payment_status = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind('paid', 'processing', payment.order_id).run();
+          await supabase
+            .from('orders')
+            .update({ payment_status: 'paid', status: 'processing', updated_at: new Date().toISOString() })
+            .eq('id', payment.order_id);
         }
       }
       
@@ -153,7 +159,8 @@ paymentRoutes.get('/status/:paymentId', async (c) => {
       transactionId: payment.transaction_id,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Check payment status error:", error);
+    return c.json({ error: 'Failed to check payment status', details: error.message }, 500);
   }
 });
 
@@ -161,44 +168,37 @@ paymentRoutes.get('/status/:paymentId', async (c) => {
 paymentRoutes.post('/webhook/momo', async (c) => {
   try {
     const body = await c.req.json();
-    
-    // Verify webhook signature (in production)
-    // const signature = c.req.header('X-Callback-Signature');
-    // if (!verifyWebhookSignature(body, signature)) {
-    //   return c.json({ error: 'Invalid signature' }, 401);
-    // }
-    
     const { externalId, financialTransactionId, status } = body;
     
-    // Find payment by order number
-    const order = await c.env.DB.prepare(
-      'SELECT id FROM orders WHERE order_number = ?'
-    ).bind(externalId).first();
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('order_number', externalId)
+      .single();
     
-    if (!order) {
+    if (orderError || !order) {
       return c.json({ error: 'Order not found' }, 404);
     }
     
-    // Update payment status
-    await c.env.DB.prepare(
-      'UPDATE payments SET status = ?, provider_response = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ? AND transaction_id = ?'
-    ).bind(
-      status === 'SUCCESSFUL' ? 'success' : status === 'FAILED' ? 'failed' : 'pending',
-      JSON.stringify(body),
-      order.id,
-      financialTransactionId
-    ).run();
-    
-    // Update order status if payment successful
+    const newStatus = status === 'SUCCESSFUL' ? 'success' : status === 'FAILED' ? 'failed' : 'pending';
+
+    await supabase
+      .from('payments')
+      .update({ status: newStatus, provider_response: body, updated_at: new Date().toISOString() })
+      .eq('order_id', order.id)
+      .eq('transaction_id', financialTransactionId);
+
     if (status === 'SUCCESSFUL') {
-      await c.env.DB.prepare(
-        'UPDATE orders SET payment_status = ?, status = ?, payment_reference = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind('paid', 'processing', financialTransactionId, order.id).run();
+      await supabase
+        .from('orders')
+        .update({ payment_status: 'paid', status: 'processing', payment_reference: financialTransactionId, updated_at: new Date().toISOString() })
+        .eq('id', order.id);
     }
     
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("MoMo webhook error:", error);
+    return c.json({ error: 'Failed to process webhook', details: error.message }, 500);
   }
 });
 
