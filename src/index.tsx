@@ -5,7 +5,7 @@ import { logger } from 'hono/logger';
 import { Bindings } from './types';
 
 // Import routes
-import authRoutes from './routes/auth';
+import authRoutes from './routes/auth-enhanced';
 import productRoutes from './routes/products';
 import cartRoutes from './routes/cart';
 import orderRoutes from './routes/orders';

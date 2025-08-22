@@ -4,15 +4,14 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
 // Import Supabase-adapted routes
-// Explicit .js extensions ensure Node's ESM resolver finds the compiled files
+// The .js extension is required for Node's ES module resolver in production
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
 import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
 import paymentRoutes from './routes/payments.js';
-import schoolRoutes from './routes/schools.js';
 
-export const app = new Hono();
+const app = new Hono();
 
 // Middleware
 app.use('*', logger());
@@ -26,9 +25,6 @@ if (process.env.VITE_APP_URL) {
 
 app.use('/api/*', cors({
   origin: (origin) => {
-    if (!origin) {
-      return allowedOrigins[0];
-    }
     if (allowedOrigins.includes(origin)) {
       return origin;
     }
@@ -49,7 +45,6 @@ app.route('/api/products', productRoutes);
 app.route('/api/cart', cartRoutes);
 app.route('/api/orders', orderRoutes);
 app.route('/api/payments', paymentRoutes);
-app.route('/api/schools', schoolRoutes);
 
 // Health check
 app.get('/api/health', (c) => {
@@ -73,8 +68,7 @@ app.get('/api', (c) => {
       '/api/products',
       '/api/cart',
       '/api/orders',
-      '/api/payments',
-      '/api/schools'
+      '/api/payments'
     ]
   });
 });

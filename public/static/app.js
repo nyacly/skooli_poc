@@ -1,7 +1,8 @@
 // Skooli E-commerce Frontend JavaScript
 
 // State management
-let cart = { items: [], summary: { subtotal: 0, tax: 0, shipping: 0, total: 0, itemCount: 0 } };
+let cart = { items: [], totalAmount: 0 };
+let sessionId = localStorage.getItem('sessionId') || null;
 let authToken = localStorage.getItem('authToken') || null;
 let currentUser = null;
 
@@ -12,14 +13,13 @@ const API_BASE = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : '/api';
 document.addEventListener('DOMContentLoaded', async () => {
     await loadCategories();
     await loadProducts();
-  
+
     if (authToken) {
         await checkAuth();
     }
     await loadCart();
     updateCartUI();
     setupFormHandlers();
-
 });
 
 // Authentication
@@ -32,13 +32,7 @@ async function checkAuth() {
         });
         
         if (response.ok) {
-            const data = await response.json();
-            currentUser = {
-                id: data.user.id,
-                email: data.user.email,
-                firstName: data.user.profile?.first_name || '',
-                lastName: data.user.profile?.last_name || ''
-            };
+            currentUser = await response.json();
             updateAuthUI();
         } else {
             logout();
@@ -147,8 +141,10 @@ async function register(userData) {
 
 function logout() {
     authToken = null;
+    sessionId = null;
     currentUser = null;
     localStorage.removeItem('authToken');
+    localStorage.removeItem('sessionId');
     location.reload();
 }
 
@@ -172,21 +168,6 @@ async function loadCategories() {
     }
 }
 
-// Schools
-async function loadSchools() {
-    try {
-        const response = await fetch(`${API_BASE}/schools`);
-        const data = await response.json();
-        const select = document.getElementById('school-select');
-        if (select && data.schools) {
-            select.innerHTML = '<option value="">Select School</option>' +
-                data.schools.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-        }
-    } catch (error) {
-        console.error('Failed to load schools:', error);
-    }
-}
-
 // Products
 async function loadProducts(category = null, search = null) {
     try {
@@ -197,7 +178,7 @@ async function loadProducts(category = null, search = null) {
         const response = await fetch(url);
         const data = await response.json();
         
-        const container = document.getElementById('productsGrid');
+        const container = document.getElementById('products');
         if (container) {
             container.innerHTML = data.products.map(product => `
                 <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
@@ -230,11 +211,7 @@ async function loadCart() {
         const response = await fetch(`${API_BASE}/cart`, { headers });
         const data = await response.json();
 
-        if (response.ok) {
-            cart = data;
-        } else {
-            cart = { items: [], summary: { subtotal: 0, tax: 0, shipping: 0, total: 0, itemCount: 0 } };
-        }
+        cart = data;
         updateCartUI();
     } catch (error) {
         console.error('Failed to load cart:', error);
@@ -252,7 +229,6 @@ async function addToCart(productId) {
             'Authorization': `Bearer ${authToken}`
         };
         
-
         const response = await fetch(`${API_BASE}/cart/add`, {
             method: 'POST',
             headers,
@@ -292,12 +268,9 @@ async function updateCartItem(itemId, quantity) {
         if (response.ok) {
             await loadCart();
         } else {
-
             const data = await response.json();
             alert(data.error || 'Failed to update cart');
         }
-
-        await loadCart();
     } catch (error) {
         console.error('Failed to update cart:', error);
     }
@@ -328,9 +301,9 @@ async function removeFromCart(itemId) {
 
 function updateCartUI() {
     // Update cart count
-    const cartCount = document.getElementById('cartCount');
+    const cartCount = document.getElementById('cart-count');
     if (cartCount) {
-        const itemCount = cart.summary ? cart.summary.itemCount : 0;
+        const itemCount = cart.items ? cart.items.reduce((sum, item) => sum + item.quantity, 0) : 0;
         cartCount.textContent = itemCount;
     }
     
@@ -387,19 +360,19 @@ function showNotification(message) {
 
 // Modal functions
 function openCart() {
-    document.getElementById('cartModal').classList.remove('hidden');
+    document.getElementById('cart-modal').classList.remove('hidden');
 }
 
 function closeCart() {
-    document.getElementById('cartModal').classList.add('hidden');
+    document.getElementById('cart-modal').classList.add('hidden');
 }
 
 function showLogin() {
-    document.getElementById('authModal').classList.remove('hidden');
+    document.getElementById('login-modal').classList.remove('hidden');
 }
 
 function closeLogin() {
-    document.getElementById('authModal').classList.add('hidden');
+    document.getElementById('login-modal').classList.add('hidden');
 }
 
 function showUploadList() {
@@ -428,7 +401,7 @@ function filterByCategory(category) {
 }
 
 function scrollToProducts() {
-    document.getElementById('productsSection').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('products-section').scrollIntoView({ behavior: 'smooth' });
 }
 
 // Checkout
