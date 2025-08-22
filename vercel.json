@@ -12,12 +12,9 @@
       "destination": "/api"
     },
     {
-      "source": "/static/(.*)",
-      "destination": "/static/$1"
-    },
-    {
       "source": "/(.*)",
-      "destination": "/$1"
+      "destination": "/index.html"
     }
   ]
 }
+
