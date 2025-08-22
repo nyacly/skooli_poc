@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.1",
+    "@hono/vite-cloudflare-pages": "^0.4.2",
     "@hono/zod-validator": "^0.4.2",
     "@paypal/checkout-server-sdk": "^1.0.3",
     "@supabase/supabase-js": "^2.55.0",

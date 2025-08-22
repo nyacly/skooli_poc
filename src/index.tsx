@@ -232,15 +232,31 @@ app.get('/', (c) => {
         <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
             <div class="bg-white rounded-lg max-w-md w-full mx-4">
                 <div class="p-6">
-                    <h3 class="text-2xl font-bold mb-4">Login / Register</h3>
-                    <form id="login-form" class="space-y-4">
-                        <input type="email" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg">
-                        <input type="password" placeholder="Password" required class="w-full px-4 py-2 border rounded-lg">
-                        <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
-                            Login
-                        </button>
-                    </form>
-                    <button onclick="closeLogin()" class="w-full bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 mt-2">
+                    <div class="flex border-b mb-4">
+                        <button id="login-tab" class="flex-1 py-2 text-center font-semibold border-b-2 border-green-600 text-green-600">Login</button>
+                        <button id="register-tab" class="flex-1 py-2 text-center font-semibold text-gray-500">Register</button>
+                    </div>
+                    <div id="login-form-container">
+                        <form id="login-form" class="space-y-4">
+                            <input type="email" id="login-email" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg">
+                            <input type="password" id="login-password" placeholder="Password" required class="w-full px-4 py-2 border rounded-lg">
+                            <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
+                                Login
+                            </button>
+                        </form>
+                    </div>
+                    <div id="register-form-container" class="hidden">
+                        <form id="register-form" class="space-y-4">
+                            <input type="text" id="register-firstname" placeholder="First Name" required class="w-full px-4 py-2 border rounded-lg">
+                            <input type="text" id="register-lastname" placeholder="Last Name" required class="w-full px-4 py-2 border rounded-lg">
+                            <input type="email" id="register-email" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg">
+                            <input type="password" id="register-password" placeholder="Password (min. 8 characters)" required class="w-full px-4 py-2 border rounded-lg">
+                            <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
+                                Register
+                            </button>
+                        </form>
+                    </div>
+                    <button onclick="closeLogin()" class="w-full bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 mt-4">
                         Cancel
                     </button>
                 </div>
@@ -248,6 +264,80 @@ app.get('/', (c) => {
         </div>
 
         <script src="/static/app.js"></script>
+    </body>
+    </html>
+  `);
+});
+
+// Admin page
+app.get('/admin', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admin Dashboard - Skooli</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+    </head>
+    <body class="bg-gray-100">
+        <div class="flex h-screen bg-gray-200">
+            <!-- Sidebar -->
+            <div class="w-64 bg-gray-800 text-white flex flex-col">
+                <div class="px-8 py-4 border-b border-gray-700">
+                    <h2 class="text-2xl font-semibold">Skooli Admin</h2>
+                </div>
+                <nav class="flex-1 px-4 py-4 space-y-2">
+                    <a href="/admin" class="flex items-center px-4 py-2 text-gray-100 bg-gray-700 rounded-lg">
+                        <i class="fas fa-tachometer-alt mr-3"></i> Dashboard
+                    </a>
+                    <a href="#" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-lg">
+                        <i class="fas fa-box-open mr-3"></i> Products
+                    </a>
+                    <a href="#" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-lg">
+                        <i class="fas fa-shopping-cart mr-3"></i> Orders
+                    </a>
+                    <a href="#" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-lg">
+                        <i class="fas fa-users mr-3"></i> Users
+                    </a>
+                    <a href="/" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-lg mt-auto">
+                        <i class="fas fa-arrow-left mr-3"></i> Back to Shop
+                    </a>
+                </nav>
+            </div>
+
+            <!-- Main content -->
+            <div class="flex-1 flex flex-col">
+                <header class="bg-white shadow-md p-4 flex justify-end">
+                    <div id="admin-user" class="flex items-center">
+                        <!-- Admin user info will be loaded here -->
+                    </div>
+                </header>
+                <main class="flex-1 p-8">
+                    <h1 class="text-3xl font-bold mb-8">Dashboard</h1>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-gray-600">Total Revenue</h3>
+                            <p class="text-3xl font-bold">UGX 12,345,678</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-gray-600">Total Orders</h3>
+                            <p class="text-3xl font-bold">1,234</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-gray-600">New Users</h3>
+                            <p class="text-3xl font-bold">56</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-gray-600">Pending Orders</h3>
+                            <p class="text-3xl font-bold">12</p>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+        <script src="/static/admin.js"></script>
     </body>
     </html>
   `);
