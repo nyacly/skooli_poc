@@ -128,17 +128,6 @@ npm run dev:vercel
 vercel dev
 ```
 
-### Running Tests
-The test scripts start a lightweight API server (using `npm run dev:api`), run HTTP checks, and shut the server down automatically:
-
-```bash
-# Verify the root URL
-npm test
-
-# Check the API health endpoint
-npm run test:api
-```
-
 ### 3. Deployment to Vercel
 
 #### Prerequisites

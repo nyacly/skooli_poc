@@ -6,17 +6,16 @@ def verify_signup_modal(page: Page):
     register tab, and filled out.
     """
     # 1. Arrange: Go to the application's home page.
-    # The public directory is not served, so we need to go to the index.html file
-    # I will assume the server is running on localhost:8080 and serving the public directory
-    page.goto("http://localhost:8080/")
-    page.wait_for_load_state('domcontentloaded')
+    page.goto("http://localhost:3000/")
 
+    # Wait for the main content to be loaded
     print(page.content())
+    expect(page.get_by_role("heading", name="Featured Products")).to_be_visible(timeout=60000)
 
     # 2. Act: Open the login modal and switch to the register tab.
     # The login button is in the nav
     login_button = page.locator('button[onclick="showLogin()"]')
-    login_button.click(timeout=60000)
+    login_button.click()
 
     # The modal should be visible now
     modal = page.locator("#login-modal")

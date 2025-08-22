@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "vite",
     "dev:vercel": "vercel dev",
-    "dev:sandbox": "wrangler pages dev dist --d1=skooli-production --local --ip 0.0.0.0 --port 3000",
-    "dev:api": "tsx scripts/dev-server.ts",
+    "dev:sandbox": "wrangler pages dev src/index.tsx --d1=skooli-production --local --ip 0.0.0.0 --port 3000",
     "build": "vite build",
     "build:vercel": "tsc -p tsconfig.api.json && node scripts/build-vercel.mjs",
     "preview": "wrangler pages dev dist",
@@ -19,8 +18,8 @@
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
     "supabase:migrate": "tsx scripts/migrate-to-supabase.ts",
     "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
-    "test": "start-server-and-test dev:api http://localhost:3000/api/health \"curl http://localhost:3000\"",
-    "test:api": "start-server-and-test dev:api http://localhost:3000/api/health \"curl http://localhost:3000/api/health\""
+    "test": "curl http://localhost:3000",
+    "test:api": "curl http://localhost:3000/api/health"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.1",
@@ -42,12 +41,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240117.0",
-    "@hono/vite-cloudflare-pages": "^0.4.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.0.0",
     "@types/speakeasy": "^2.0.10",
     "@types/uuid": "^9.0.7",
-    "start-server-and-test": "^2.0.13",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3",
     "vercel": "^37.0.0",
