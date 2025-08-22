@@ -1,8 +1,7 @@
 // Skooli E-commerce Frontend JavaScript
 
 // State management
-let cart = { items: [], totalAmount: 0 };
-let sessionId = localStorage.getItem('sessionId') || null;
+let cart = { items: [], summary: { subtotal: 0, tax: 0, shipping: 0, total: 0, itemCount: 0 } };
 let authToken = localStorage.getItem('authToken') || null;
 let currentUser = null;
 
@@ -13,12 +12,21 @@ const API_BASE = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : '/api';
 document.addEventListener('DOMContentLoaded', async () => {
     await loadCategories();
     await loadProducts();
+    await loadSchools();
     await loadCart();
-    updateCartUI();
-    
+
     if (authToken) {
         await checkAuth();
     }
+
+    const authBtn = document.getElementById('authBtn');
+    if (authBtn) authBtn.onclick = showLogin;
+    const cartBtn = document.getElementById('cartBtn');
+    if (cartBtn) cartBtn.onclick = openCart;
+    const closeCartBtn = document.getElementById('closeCartBtn');
+    if (closeCartBtn) closeCartBtn.onclick = closeCart;
+    const closeAuthBtn = document.getElementById('closeAuthBtn');
+    if (closeAuthBtn) closeAuthBtn.onclick = closeLogin;
 });
 
 // Authentication
@@ -31,7 +39,13 @@ async function checkAuth() {
         });
         
         if (response.ok) {
-            currentUser = await response.json();
+            const data = await response.json();
+            currentUser = {
+                id: data.user.id,
+                email: data.user.email,
+                firstName: data.user.profile?.first_name || '',
+                lastName: data.user.profile?.last_name || ''
+            };
             updateAuthUI();
         } else {
             logout();
@@ -42,29 +56,33 @@ async function checkAuth() {
 }
 
 function updateAuthUI() {
-    const loginBtn = document.querySelector('button[onclick="showLogin()"]');
-    if (loginBtn && currentUser) {
-        loginBtn.innerHTML = `<i class="fas fa-user mr-2"></i>${currentUser.firstName}`;
-        loginBtn.setAttribute('onclick', 'showUserMenu()');
+    const authBtn = document.getElementById('authBtn');
+    const authText = document.getElementById('authText');
+    if (authBtn && authText && currentUser) {
+        authText.textContent = currentUser.firstName;
+        authBtn.onclick = logout;
     }
 }
 
 async function login(email, password) {
     try {
-        const response = await fetch(`${API_BASE}/auth/login`, {
+        const response = await fetch(`${API_BASE}/auth/signin`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
-            authToken = data.token;
-            sessionId = data.sessionId;
-            currentUser = data.user;
+            authToken = data.session.access_token;
+            currentUser = {
+                id: data.user.id,
+                email: data.user.email,
+                firstName: data.user.profile?.first_name || '',
+                lastName: data.user.profile?.last_name || ''
+            };
             localStorage.setItem('authToken', authToken);
-            localStorage.setItem('sessionId', sessionId);
             updateAuthUI();
             closeLogin();
             await loadCart();
@@ -80,23 +98,21 @@ async function login(email, password) {
 
 function logout() {
     authToken = null;
-    sessionId = null;
     currentUser = null;
     localStorage.removeItem('authToken');
-    localStorage.removeItem('sessionId');
     location.reload();
 }
 
 // Categories
 async function loadCategories() {
     try {
-        const response = await fetch(`${API_BASE}/products/categories/all`);
-        const categories = await response.json();
-        
-        const container = document.getElementById('categories');
-        if (container) {
-            container.innerHTML = categories.map(cat => `
-                <div onclick="filterByCategory(${cat.id})" class="bg-white p-4 rounded-lg shadow hover:shadow-lg cursor-pointer transition-shadow">
+        const response = await fetch(`${API_BASE}/products/categories`);
+        const data = await response.json();
+
+        const container = document.getElementById('categoriesGrid');
+        if (container && data.categories) {
+            container.innerHTML = data.categories.map(cat => `
+                <div onclick="filterByCategory('${cat.slug}')" class="bg-white p-4 rounded-lg shadow hover:shadow-lg cursor-pointer transition-shadow">
                     <i class="fas ${cat.icon || 'fa-box'} text-3xl text-green-600 mb-2"></i>
                     <h4 class="font-semibold">${cat.name}</h4>
                     <p class="text-sm text-gray-600">${cat.description || ''}</p>
@@ -105,6 +121,21 @@ async function loadCategories() {
         }
     } catch (error) {
         console.error('Failed to load categories:', error);
+    }
+}
+
+// Schools
+async function loadSchools() {
+    try {
+        const response = await fetch(`${API_BASE}/schools`);
+        const data = await response.json();
+        const select = document.getElementById('school-select');
+        if (select && data.schools) {
+            select.innerHTML = '<option value="">Select School</option>' +
+                data.schools.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        }
+    } catch (error) {
+        console.error('Failed to load schools:', error);
     }
 }
 
@@ -118,7 +149,7 @@ async function loadProducts(categoryId = null, search = null) {
         const response = await fetch(url);
         const data = await response.json();
         
-        const container = document.getElementById('products');
+        const container = document.getElementById('productsGrid');
         if (container) {
             container.innerHTML = data.products.map(product => `
                 <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
@@ -128,7 +159,7 @@ async function loadProducts(categoryId = null, search = null) {
                         <p class="text-gray-600 text-sm mb-2">${product.description || ''}</p>
                         <div class="flex justify-between items-center">
                             <span class="text-xl font-bold text-green-600">UGX ${formatNumber(product.price)}</span>
-                            <button onclick="addToCart(${product.id})" class="bg-orange-500 text-white px-3 py-1 rounded hover:bg-orange-600">
+                            <button onclick="addToCart('${product.id}')" class="bg-orange-500 text-white px-3 py-1 rounded hover:bg-orange-600">
                                 <i class="fas fa-cart-plus"></i>
                             </button>
                         </div>
@@ -148,14 +179,15 @@ async function loadCart() {
         if (authToken) {
             headers['Authorization'] = `Bearer ${authToken}`;
         }
-        if (sessionId) {
-            headers['X-Session-Id'] = sessionId;
-        }
-        
+
         const response = await fetch(`${API_BASE}/cart`, { headers });
         const data = await response.json();
-        
-        cart = data;
+
+        if (response.ok) {
+            cart = data;
+        } else {
+            cart = { items: [], summary: { subtotal: 0, tax: 0, shipping: 0, total: 0, itemCount: 0 } };
+        }
         updateCartUI();
     } catch (error) {
         console.error('Failed to load cart:', error);
@@ -168,25 +200,17 @@ async function addToCart(productId) {
         if (authToken) {
             headers['Authorization'] = `Bearer ${authToken}`;
         }
-        if (sessionId) {
-            headers['X-Session-Id'] = sessionId;
-        }
-        
+
         const response = await fetch(`${API_BASE}/cart/add`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ productId, quantity: 1 })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
-            cart = data.cart;
-            if (data.sessionId && !sessionId) {
-                sessionId = data.sessionId;
-                localStorage.setItem('sessionId', sessionId);
-            }
-            updateCartUI();
+            await loadCart();
             showNotification('Item added to cart!');
         } else {
             alert(data.error || 'Failed to add to cart');
@@ -196,28 +220,33 @@ async function addToCart(productId) {
     }
 }
 
-async function updateCartItem(productId, quantity) {
+async function updateCartItem(itemId, quantity) {
     try {
         const headers = { 'Content-Type': 'application/json' };
         if (authToken) {
             headers['Authorization'] = `Bearer ${authToken}`;
         }
-        if (sessionId) {
-            headers['X-Session-Id'] = sessionId;
+
+        let response;
+        if (quantity <= 0) {
+            response = await fetch(`${API_BASE}/cart/${itemId}`, {
+                method: 'DELETE',
+                headers
+            });
+        } else {
+            response = await fetch(`${API_BASE}/cart/${itemId}`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ quantity })
+            });
         }
-        
-        const response = await fetch(`${API_BASE}/cart/update`, {
-            method: 'PUT',
-            headers,
-            body: JSON.stringify({ productId, quantity })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            cart = data.cart;
-            updateCartUI();
+
+        if (!response.ok) {
+            const data = await response.json();
+            alert(data.error || 'Failed to update cart');
         }
+
+        await loadCart();
     } catch (error) {
         console.error('Failed to update cart:', error);
     }
@@ -225,30 +254,30 @@ async function updateCartItem(productId, quantity) {
 
 function updateCartUI() {
     // Update cart count
-    const cartCount = document.getElementById('cart-count');
+    const cartCount = document.getElementById('cartCount');
     if (cartCount) {
-        const itemCount = cart.items ? cart.items.reduce((sum, item) => sum + item.quantity, 0) : 0;
+        const itemCount = cart.summary ? cart.summary.itemCount : 0;
         cartCount.textContent = itemCount;
     }
     
     // Update cart modal
-    const cartItems = document.getElementById('cart-items');
+    const cartItems = document.getElementById('cartItems');
     if (cartItems) {
         if (cart.items && cart.items.length > 0) {
             cartItems.innerHTML = cart.items.map(item => `
                 <div class="flex items-center justify-between py-2 border-b">
                     <div class="flex items-center">
-                        <img src="${item.imageUrl || '/static/placeholder.png'}" alt="${item.name}" class="w-12 h-12 object-cover rounded mr-4">
+                        <img src="${item.products?.image_url || '/static/placeholder.png'}" alt="${item.products?.name}" class="w-12 h-12 object-cover rounded mr-4">
                         <div>
-                            <h5 class="font-semibold">${item.name}</h5>
-                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.price)}</p>
+                            <h5 class="font-semibold">${item.products?.name}</h5>
+                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.products?.price)}</p>
                         </div>
                     </div>
                     <div class="flex items-center">
-                        <button onclick="updateCartItem(${item.productId}, ${item.quantity - 1})" class="px-2 py-1 bg-gray-200 rounded">-</button>
+                        <button onclick="updateCartItem('${item.id}', ${item.quantity - 1})" class="px-2 py-1 bg-gray-200 rounded">-</button>
                         <span class="mx-2">${item.quantity}</span>
-                        <button onclick="updateCartItem(${item.productId}, ${item.quantity + 1})" class="px-2 py-1 bg-gray-200 rounded">+</button>
-                        <button onclick="updateCartItem(${item.productId}, 0)" class="ml-4 text-red-500">
+                        <button onclick="updateCartItem('${item.id}', ${item.quantity + 1})" class="px-2 py-1 bg-gray-200 rounded">+</button>
+                        <button onclick="updateCartItem('${item.id}', 0)" class="ml-4 text-red-500">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -258,11 +287,20 @@ function updateCartUI() {
             cartItems.innerHTML = '<p class="text-center text-gray-500 py-4">Your cart is empty</p>';
         }
     }
-    
+
     // Update total
-    const cartTotal = document.getElementById('cart-total');
+    const cartTotal = document.getElementById('cartTotal');
     if (cartTotal) {
-        cartTotal.textContent = `UGX ${formatNumber(cart.totalAmount || 0)}`;
+        cartTotal.textContent = `UGX ${formatNumber(cart.summary?.total || 0)}`;
+    }
+
+    const cartSubtotal = document.getElementById('cartSubtotal');
+    if (cartSubtotal) {
+        cartSubtotal.textContent = `UGX ${formatNumber(cart.summary?.subtotal || 0)}`;
+    }
+    const cartTax = document.getElementById('cartTax');
+    if (cartTax) {
+        cartTax.textContent = `UGX ${formatNumber(cart.summary?.tax || 0)}`;
     }
 }
 
@@ -284,19 +322,19 @@ function showNotification(message) {
 
 // Modal functions
 function openCart() {
-    document.getElementById('cart-modal').classList.remove('hidden');
+    document.getElementById('cartModal').classList.remove('hidden');
 }
 
 function closeCart() {
-    document.getElementById('cart-modal').classList.add('hidden');
+    document.getElementById('cartModal').classList.add('hidden');
 }
 
 function showLogin() {
-    document.getElementById('login-modal').classList.remove('hidden');
+    document.getElementById('authModal').classList.remove('hidden');
 }
 
 function closeLogin() {
-    document.getElementById('login-modal').classList.add('hidden');
+    document.getElementById('authModal').classList.add('hidden');
 }
 
 function showUploadList() {
@@ -325,7 +363,7 @@ function filterByCategory(categoryId) {
 }
 
 function scrollToProducts() {
-    document.getElementById('products-section').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('productsSection').scrollIntoView({ behavior: 'smooth' });
 }
 
 // Checkout
@@ -378,12 +416,8 @@ async function proceedToCheckout() {
 
 // Payment
 async function initiatePayment(orderId) {
-    const phoneNumber = prompt('Enter your MoMo phone number (e.g., 0700000000):');
-    
-    if (!phoneNumber) return;
-    
     try {
-        const response = await fetch(`${API_BASE}/payments/initiate`, {
+        const response = await fetch(`${API_BASE}/payments/initialize`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -391,25 +425,24 @@ async function initiatePayment(orderId) {
             },
             body: JSON.stringify({
                 orderId,
-                phoneNumber,
-                paymentMethod: 'momo'
+                method: 'momo'
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
             alert(data.message);
-            
+
             // Clear cart after successful order
-            await fetch(`${API_BASE}/cart/clear`, {
+            await fetch(`${API_BASE}/cart`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${authToken}`
                 }
             });
-            
-            cart = { items: [], totalAmount: 0 };
+
+            await loadCart();
             updateCartUI();
         } else {
             alert(data.error || 'Payment failed');
@@ -483,12 +516,12 @@ async function uploadList() {
 
 // Login form handler
 document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('login-form');
+    const loginForm = document.getElementById('authForm');
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = e.target[0].value;
-            const password = e.target[1].value;
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
             await login(email, password);
         });
     }

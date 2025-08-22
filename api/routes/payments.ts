@@ -17,6 +17,32 @@ async function getUserFromToken(authorization: string | undefined) {
   return user;
 }
 
+// Get payments for the authenticated user
+payments.get('/', async (c) => {
+  try {
+    const user = await getUserFromToken(c.req.header('Authorization'));
+    if (!user) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*, orders!inner(user_id)')
+      .eq('orders.user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Payments fetch error:', error);
+      return c.json({ error: 'Failed to fetch payments' }, 500);
+    }
+
+    return c.json({ payments: data || [] });
+  } catch (error) {
+    console.error('Payments error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
 // Payment initialization schema
 const initPaymentSchema = z.object({
   orderId: z.string().uuid(),

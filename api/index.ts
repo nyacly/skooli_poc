@@ -10,6 +10,7 @@ import productRoutes from './routes/products.js';
 import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
 import paymentRoutes from './routes/payments.js';
+import schoolRoutes from './routes/schools.js';
 
 export const app = new Hono();
 
@@ -48,6 +49,7 @@ app.route('/api/products', productRoutes);
 app.route('/api/cart', cartRoutes);
 app.route('/api/orders', orderRoutes);
 app.route('/api/payments', paymentRoutes);
+app.route('/api/schools', schoolRoutes);
 
 // Health check
 app.get('/api/health', (c) => {
@@ -71,7 +73,8 @@ app.get('/api', (c) => {
       '/api/products',
       '/api/cart',
       '/api/orders',
-      '/api/payments'
+      '/api/payments',
+      '/api/schools'
     ]
   });
 });
