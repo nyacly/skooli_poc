@@ -189,7 +189,7 @@ const createProductSchema = z.object({
   price: z.number().positive(),
   category_id: z.string().uuid(),
   sku: z.string().min(1),
-  quantity: z.number().int().min(0),
+  stock_quantity: z.number().int().min(0),
   image_url: z.string().url().optional(),
   is_featured: z.boolean().default(false),
   is_active: z.boolean().default(true)

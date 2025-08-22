@@ -1,28 +1,32 @@
 // Skooli E-commerce Frontend JavaScript
 
 // State management
-let cart = { items: [], totalAmount: 0 };
-let sessionId = localStorage.getItem('sessionId') || null;
+let cart = { items: [], summary: { total: 0, subtotal: 0, tax: 0, shipping: 0, itemCount: 0 } };
 let authToken = localStorage.getItem('authToken') || null;
 let currentUser = null;
+let currentPage = 'home';
+let isSignUpMode = false;
 
 // API Base URL - use the one set in HTML or default to /api
 const API_BASE = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : '/api';
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Initializing Skooli app...');
+    setupEventHandlers();
     await loadCategories();
-    await loadProducts();
-
+    await loadFeaturedProducts();
+    
     if (authToken) {
         await checkAuth();
     }
+    
     await loadCart();
     updateCartUI();
-    setupFormHandlers();
+    updateAuthUI();
 });
 
-// Authentication
+// Authentication functions
 async function checkAuth() {
     try {
         const response = await fetch(`${API_BASE}/auth/me`, {
@@ -32,65 +36,21 @@ async function checkAuth() {
         });
         
         if (response.ok) {
-            currentUser = await response.json();
+            const data = await response.json();
+            currentUser = data;
             updateAuthUI();
         } else {
             logout();
         }
     } catch (error) {
         console.error('Auth check failed:', error);
-    }
-}
-
-function updateAuthUI() {
-    const loginBtn = document.querySelector('button[onclick="showLogin()"]');
-    const nav = loginBtn ? loginBtn.parentElement : null;
-
-    if (loginBtn && currentUser && currentUser.user.profile) {
-        // Update login button to show user name and a dropdown menu
-        loginBtn.innerHTML = `<i class="fas fa-user mr-2"></i>${currentUser.user.profile.first_name} <i class="fas fa-chevron-down ml-2"></i>`;
-
-        // Create dropdown menu
-        const dropdown = document.createElement('div');
-        dropdown.id = 'user-menu';
-        dropdown.className = 'hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50';
-
-        let menuItems = `
-            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">My Account</a>
-            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Order History</a>
-        `;
-
-        if (currentUser.user.profile.user_type === 'admin') {
-            menuItems += `<a href="/admin" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Admin Dashboard</a>`;
-        }
-
-        menuItems += `<button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100">Logout</button>`;
-
-        dropdown.innerHTML = menuItems;
-
-        // The user button will now toggle this menu
-        loginBtn.onclick = () => {
-            dropdown.classList.toggle('hidden');
-        };
-
-        // Add dropdown to nav
-        if (nav) {
-            nav.classList.add('relative'); // For positioning the dropdown
-            nav.appendChild(dropdown);
-        }
-
-    }
-}
-
-function showUserMenu() {
-    const menu = document.getElementById('user-menu');
-    if (menu) {
-        menu.classList.toggle('hidden');
+        logout();
     }
 }
 
 async function login(email, password) {
     try {
+        showLoadingSpinner(true);
         const response = await fetch(`${API_BASE}/auth/signin`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -101,137 +61,253 @@ async function login(email, password) {
 
         if (response.ok) {
             authToken = data.session.access_token;
-            currentUser = data.user;
             localStorage.setItem('authToken', authToken);
-            await checkAuth();
-            closeLogin();
+            currentUser = data;
+            updateAuthUI();
+            hideAuthModal();
+            showNotification('Login successful!', 'success');
             await loadCart();
-            updateCartUI();
         } else {
-            alert(data.error || 'Login failed');
+            showNotification(data.error || 'Login failed', 'error');
         }
     } catch (error) {
-        console.error('Login error:', error);
-        alert('Login failed');
+        console.error('Login failed:', error);
+        showNotification('Login failed. Please try again.', 'error');
+    } finally {
+        showLoadingSpinner(false);
     }
 }
 
-async function register(userData) {
+async function signup(name, email, password) {
     try {
+        showLoadingSpinner(true);
+        // Split name into first and last name
+        const nameParts = name.trim().split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        
         const response = await fetch(`${API_BASE}/auth/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(userData)
+            body: JSON.stringify({ 
+                first_name: firstName, 
+                last_name: lastName,
+                email, 
+                password,
+                user_type: 'parent'
+            })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            // Switch to login tab after successful registration
-            document.getElementById('login-tab').click();
+            showNotification('Account created successfully! Please check your email to verify your account.', 'success');
+            hideAuthModal();
+            // Switch to login mode for the user to sign in
+            isSignUpMode = false;
         } else {
-            alert(data.error || 'Registration failed');
+            showNotification(data.error || 'Signup failed', 'error');
         }
     } catch (error) {
-        console.error('Registration error:', error);
-        alert('Registration failed');
+        console.error('Signup failed:', error);
+        showNotification('Signup failed. Please try again.', 'error');
+    } finally {
+        showLoadingSpinner(false);
     }
 }
 
 function logout() {
     authToken = null;
-    sessionId = null;
     currentUser = null;
     localStorage.removeItem('authToken');
-    localStorage.removeItem('sessionId');
-    location.reload();
+    cart = { items: [], summary: { total: 0, subtotal: 0, tax: 0, shipping: 0, itemCount: 0 } };
+    updateAuthUI();
+    updateCartUI();
+    showNotification('Logged out successfully', 'success');
 }
 
-// Categories
+function updateAuthUI() {
+    const authBtn = document.getElementById('authBtn');
+    const authText = document.getElementById('authText');
+    
+    if (authBtn && authText) {
+        if (currentUser && currentUser.user) {
+            const profile = currentUser.user.profile;
+            const displayName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : currentUser.user.email;
+            authText.textContent = displayName;
+            authBtn.onclick = () => logout();
+        } else {
+            authText.textContent = 'Sign In';
+            authBtn.onclick = () => showAuthModal();
+        }
+    }
+}
+
+// Categories functions
 async function loadCategories() {
     try {
+        console.log('Loading categories...');
         const response = await fetch(`${API_BASE}/products/categories`);
-        const { categories } = await response.json();
         
-        const container = document.getElementById('categories');
-        if (container) {
-            container.innerHTML = categories.map(cat => `
-                <div onclick="filterByCategory('${cat.slug}')" class="bg-white p-4 rounded-lg shadow hover:shadow-lg cursor-pointer transition-shadow">
-                    <i class="fas fa-box text-3xl text-green-600 mb-2"></i>
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Categories loaded:', data);
+        
+        const container = document.getElementById('categoriesGrid');
+        if (container && data.categories) {
+            container.innerHTML = data.categories.slice(0, 6).map(cat => `
+                <div onclick="filterByCategory('${cat.slug}')" class="bg-white p-4 rounded-lg shadow hover:shadow-lg cursor-pointer transition-shadow text-center">
+                    <i class="fas fa-${cat.icon || 'box'} text-3xl text-blue-600 mb-2"></i>
                     <h4 class="font-semibold">${cat.name}</h4>
+                    ${cat.description ? `<p class="text-sm text-gray-600 mt-1">${cat.description}</p>` : ''}
                 </div>
             `).join('');
         }
     } catch (error) {
         console.error('Failed to load categories:', error);
+        showNotification('Failed to load categories', 'error');
     }
 }
 
-// Products
-async function loadProducts(category = null, search = null) {
+// Products functions
+async function loadFeaturedProducts() {
     try {
-        let url = `${API_BASE}/products?limit=20`;
-        if (category) url += `&category=${category}`;
-        if (search) url += `&search=${encodeURIComponent(search)}`;
+        console.log('Loading featured products...');
+        const response = await fetch(`${API_BASE}/products/featured`);
         
-        const response = await fetch(url);
+        if (!response.ok) {
+            // If featured endpoint doesn't exist, load regular products
+            return await loadProducts();
+        }
+        
         const data = await response.json();
+        console.log('Featured products loaded:', data);
         
-        const container = document.getElementById('products');
-        if (container) {
+        const container = document.getElementById('featuredGrid');
+        if (container && data.products) {
             container.innerHTML = data.products.map(product => `
                 <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
                     <img src="${product.image_url || '/static/placeholder.svg'}" alt="${product.name}" class="w-full h-48 object-cover rounded-t-lg">
                     <div class="p-4">
                         <h4 class="font-semibold mb-2">${product.name}</h4>
-                        <div class="flex justify-between items-center">
-                            <span class="text-xl font-bold text-green-600">UGX ${formatNumber(product.price)}</span>
-                            <button onclick="addToCart('${product.id}')" class="bg-orange-500 text-white px-3 py-1 rounded hover:bg-orange-600">
-                                <i class="fas fa-cart-plus"></i>
-                            </button>
+                        <p class="text-sm text-gray-600 mb-3 line-clamp-2">${product.description || ''}</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xl font-bold text-blue-600">UGX ${formatNumber(product.price)}</span>
                         </div>
+                        <button onclick="addToCart('${product.id}')" class="w-full bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 transition-colors ${product.stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${product.stock_quantity <= 0 ? 'disabled' : ''}>
+                            <i class="fas fa-cart-plus mr-1"></i>
+                            ${product.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock'}
+                        </button>
+                        <p class="text-sm ${product.stock_quantity > 0 ? 'text-green-600' : 'text-red-600'} mt-1 text-center">
+                            ${product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : 'Out of stock'}
+                        </p>
                     </div>
                 </div>
             `).join('');
         }
     } catch (error) {
+        console.error('Failed to load featured products:', error);
+        // Fallback to regular products
+        await loadProducts();
+    }
+}
+
+async function loadProducts(category = null, search = null) {
+    try {
+        console.log('Loading products...');
+        let url = `${API_BASE}/products?limit=12`;
+        if (category) url += `&category=${category}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Products loaded:', data);
+        
+        // Show products in featured grid if on home page, otherwise in products grid
+        const container = document.getElementById('featuredGrid') || document.getElementById('productsGrid');
+        if (container && data.products) {
+            container.innerHTML = data.products.map(product => `
+                <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                    <img src="${product.image_url || '/static/placeholder.svg'}" alt="${product.name}" class="w-full h-48 object-cover rounded-t-lg">
+                    <div class="p-4">
+                        <h4 class="font-semibold mb-2">${product.name}</h4>
+                        <p class="text-sm text-gray-600 mb-3 line-clamp-2">${product.description || ''}</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xl font-bold text-blue-600">UGX ${formatNumber(product.price)}</span>
+                        </div>
+                        <button onclick="addToCart('${product.id}')" class="w-full bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 transition-colors ${product.stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${product.stock_quantity <= 0 ? 'disabled' : ''}>
+                            <i class="fas fa-cart-plus mr-1"></i>
+                            ${product.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock'}
+                        </button>
+                        <p class="text-sm ${product.stock_quantity > 0 ? 'text-green-600' : 'text-red-600'} mt-1 text-center">
+                            ${product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : 'Out of stock'}
+                        </p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Show products section if searching/filtering
+        if (category || search) {
+            showProductsSection();
+        }
+    } catch (error) {
         console.error('Failed to load products:', error);
+        showNotification('Failed to load products', 'error');
     }
 }
 
 // Cart functions
 async function loadCart() {
-    if (!authToken) return;
-    try {
-        const headers = {
-            'Authorization': `Bearer ${authToken}`
-        };
-        
-        const response = await fetch(`${API_BASE}/cart`, { headers });
-        const data = await response.json();
-
-        cart = data;
+    if (!authToken) {
+        cart = { items: [], summary: { total: 0, subtotal: 0, tax: 0, shipping: 0, itemCount: 0 } };
         updateCartUI();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/cart`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            cart = data;
+        } else {
+            cart = { items: [], summary: { total: 0, subtotal: 0, tax: 0, shipping: 0, itemCount: 0 } };
+        }
     } catch (error) {
         console.error('Failed to load cart:', error);
+        cart = { items: [], summary: { total: 0, subtotal: 0, tax: 0, shipping: 0, itemCount: 0 } };
     }
+    
+    updateCartUI();
 }
 
 async function addToCart(productId) {
     if (!authToken) {
-        showLogin();
+        showAuthModal();
         return;
     }
+    
     try {
-        const headers = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-        };
-        
+        showLoadingSpinner(true);
         const response = await fetch(`${API_BASE}/cart/add`, {
             method: 'POST',
-            headers,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
             body: JSON.stringify({ productId, quantity: 1 })
         });
 
@@ -239,12 +315,15 @@ async function addToCart(productId) {
 
         if (response.ok) {
             await loadCart();
-            showNotification('Item added to cart!');
+            showNotification('Item added to cart!', 'success');
         } else {
-            alert(data.error || 'Failed to add to cart');
+            showNotification(data.error || 'Failed to add to cart', 'error');
         }
     } catch (error) {
         console.error('Failed to add to cart:', error);
+        showNotification('Failed to add to cart', 'error');
+    } finally {
+        showLoadingSpinner(false);
     }
 }
 
@@ -253,15 +332,14 @@ async function updateCartItem(itemId, quantity) {
         await removeFromCart(itemId);
         return;
     }
+    
     try {
-        const headers = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-        };
-        
         const response = await fetch(`${API_BASE}/cart/${itemId}`, {
             method: 'PUT',
-            headers,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
             body: JSON.stringify({ quantity })
         });
         
@@ -269,205 +347,348 @@ async function updateCartItem(itemId, quantity) {
             await loadCart();
         } else {
             const data = await response.json();
-            alert(data.error || 'Failed to update cart');
+            showNotification(data.error || 'Failed to update cart', 'error');
         }
     } catch (error) {
         console.error('Failed to update cart:', error);
+        showNotification('Failed to update cart', 'error');
     }
 }
 
 async function removeFromCart(itemId) {
     try {
-        const headers = {
-            'Authorization': `Bearer ${authToken}`
-        };
-
         const response = await fetch(`${API_BASE}/cart/${itemId}`, {
             method: 'DELETE',
-            headers
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
         });
 
         if (response.ok) {
             await loadCart();
+            showNotification('Item removed from cart', 'success');
         } else {
             const data = await response.json();
-            alert(data.error || 'Failed to remove item');
+            showNotification(data.error || 'Failed to remove item', 'error');
         }
     } catch (error) {
         console.error('Failed to remove item:', error);
+        showNotification('Failed to remove item', 'error');
     }
 }
-
 
 function updateCartUI() {
     // Update cart count
-    const cartCount = document.getElementById('cart-count');
+    const cartCount = document.getElementById('cartCount');
     if (cartCount) {
-        const itemCount = cart.summary ? cart.summary.count : 0;
-        cartCount.textContent = itemCount;
+        cartCount.textContent = cart.summary?.itemCount || 0;
     }
-    
-    // Update cart modal
-    const cartItemsContainer = document.getElementById('cart-items');
-    if (cartItemsContainer) {
-        if (cart.items && cart.items.length > 0) {
-            cartItemsContainer.innerHTML = cart.items.map(item => `
-                <div class="flex items-center justify-between py-2 border-b">
-                    <div class="flex items-center">
-                        <img src="${item.image_url || '/static/placeholder.svg'}" alt="${item.name}" class="w-12 h-12 object-cover rounded mr-4">
-                        <div>
-                            <h5 class="font-semibold">${item.name}</h5>
-                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.price)}</p>
-                        </div>
+
+    // Update cart items
+    const cartItems = document.getElementById('cartItems');
+    if (cartItems) {
+        if (!cart.items || cart.items.length === 0) {
+            cartItems.innerHTML = '<p class="text-gray-500 text-center py-4">Your cart is empty</p>';
+        } else {
+            cartItems.innerHTML = cart.items.map(item => `
+                <div class="flex items-center space-x-4 p-4 border-b">
+                    <img src="${item.products?.image_url || '/static/placeholder.svg'}" alt="${item.products?.name}" class="w-16 h-16 object-cover rounded">
+                    <div class="flex-1">
+                        <h4 class="font-semibold">${item.products?.name}</h4>
+                        <p class="text-sm text-gray-600">UGX ${formatNumber(item.products?.price || 0)}</p>
                     </div>
-                    <div class="flex items-center">
-                        <button onclick="updateCartItem('${item.productId}', ${item.quantity - 1})" class="px-2 py-1 bg-gray-200 rounded">-</button>
-                        <span class="mx-2">${item.quantity}</span>
-                        <button onclick="updateCartItem('${item.productId}', ${item.quantity + 1})" class="px-2 py-1 bg-gray-200 rounded">+</button>
-                        <button onclick="removeFromCart('${item.productId}')" class="ml-4 text-red-500">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="updateCartItem('${item.id}', ${item.quantity - 1})" class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300">-</button>
+                        <span class="w-8 text-center">${item.quantity}</span>
+                        <button onclick="updateCartItem('${item.id}', ${item.quantity + 1})" class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300">+</button>
                     </div>
+                    <button onclick="removeFromCart('${item.id}')" class="text-red-500 hover:text-red-700">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>
             `).join('');
-        } else {
-            cartItemsContainer.innerHTML = '<p class="text-center text-gray-500 py-4">Your cart is empty</p>';
         }
     }
 
-    // Update total
-    const cartTotal = document.getElementById('cart-total');
-    if (cartTotal && cart.summary) {
-        cartTotal.textContent = `UGX ${formatNumber(cart.summary.total || 0)}`;
-    }
+    // Update cart totals
+    const cartSubtotal = document.getElementById('cartSubtotal');
+    const cartTax = document.getElementById('cartTax');
+    const cartTotal = document.getElementById('cartTotal');
+
+    if (cartSubtotal) cartSubtotal.textContent = `UGX ${formatNumber(cart.summary?.subtotal || 0)}`;
+    if (cartTax) cartTax.textContent = `UGX ${formatNumber(cart.summary?.tax || 0)}`;
+    if (cartTotal) cartTotal.textContent = `UGX ${formatNumber(cart.summary?.total || 0)}`;
 }
 
-// Helper functions
+// UI Helper functions
 function formatNumber(num) {
-    return new Intl.NumberFormat('en-UG').format(num);
+    return Number(num).toLocaleString();
 }
 
-function showNotification(message) {
-    const notification = document.createElement('div');
-    notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `p-4 rounded-lg shadow-lg text-white mb-2 transform transition-transform translate-x-full ${
+        type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+    }`;
+    toast.innerHTML = `
+        <div class="flex items-center justify-between">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+
+    container.appendChild(toast);
+
+    // Animate in
     setTimeout(() => {
-        notification.remove();
-    }, 3000);
+        toast.classList.remove('translate-x-full');
+    }, 100);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.classList.add('translate-x-full');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 5000);
+}
+
+function showLoadingSpinner(show) {
+    const spinner = document.getElementById('loadingSpinner');
+    if (spinner) {
+        if (show) {
+            spinner.classList.remove('hidden');
+        } else {
+            spinner.classList.add('hidden');
+        }
+    }
 }
 
 // Modal functions
-function openCart() {
-    document.getElementById('cart-modal').classList.remove('hidden');
-}
-
-function closeCart() {
-    document.getElementById('cart-modal').classList.add('hidden');
-}
-
-function showLogin() {
-    document.getElementById('login-modal').classList.remove('hidden');
-}
-
-function closeLogin() {
-    document.getElementById('login-modal').classList.add('hidden');
-}
-
-function showUploadList() {
-    if (!currentUser) {
-        showLogin();
-        return;
+function showAuthModal() {
+    const modal = document.getElementById('authModal');
+    const title = document.getElementById('authTitle');
+    const nameField = document.getElementById('nameField');
+    const submitBtn = document.getElementById('authSubmitBtn');
+    const toggleLink = document.getElementById('authToggle');
+    
+    if (modal) {
+        modal.classList.remove('hidden');
+        
+        if (isSignUpMode) {
+            title.textContent = 'Sign Up';
+            nameField.classList.remove('hidden');
+            submitBtn.textContent = 'Sign Up';
+            toggleLink.textContent = 'Already have an account? Sign In';
+        } else {
+            title.textContent = 'Sign In';
+            nameField.classList.add('hidden');
+            submitBtn.textContent = 'Sign In';
+            toggleLink.textContent = "Don't have an account? Sign Up";
+        }
     }
-    document.getElementById('upload-modal').classList.remove('hidden');
 }
 
-function closeUploadModal() {
-    document.getElementById('upload-modal').classList.add('hidden');
-}
-
-// Search products
-function searchProducts() {
-    const searchInput = document.getElementById('search-input');
-    if (searchInput) {
-        loadProducts(null, searchInput.value);
+function hideAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        // Clear form
+        document.getElementById('authForm').reset();
     }
+}
+
+function showCartModal() {
+    const modal = document.getElementById('cartModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function hideCartModal() {
+    const modal = document.getElementById('cartModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// Navigation functions
+function showProductsSection() {
+    const heroSection = document.getElementById('heroSection');
+    const categoriesSection = document.getElementById('categoriesSection');
+    const featuredSection = document.getElementById('featuredSection');
+    const productsSection = document.getElementById('productsSection');
+    
+    if (heroSection) heroSection.classList.add('hidden');
+    if (categoriesSection) categoriesSection.classList.add('hidden');
+    if (featuredSection) featuredSection.classList.add('hidden');
+    if (productsSection) productsSection.classList.remove('hidden');
+    
+    currentPage = 'products';
+}
+
+function showHomePage() {
+    const heroSection = document.getElementById('heroSection');
+    const categoriesSection = document.getElementById('categoriesSection');
+    const featuredSection = document.getElementById('featuredSection');
+    const productsSection = document.getElementById('productsSection');
+    
+    if (heroSection) heroSection.classList.remove('hidden');
+    if (categoriesSection) categoriesSection.classList.remove('hidden');
+    if (featuredSection) featuredSection.classList.remove('hidden');
+    if (productsSection) productsSection.classList.add('hidden');
+    
+    currentPage = 'home';
 }
 
 function filterByCategory(category) {
     loadProducts(category);
-    scrollToProducts();
 }
 
-function scrollToProducts() {
-    document.getElementById('products-section').scrollIntoView({ behavior: 'smooth' });
+function searchProducts() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        const query = searchInput.value.trim();
+        if (query) {
+            loadProducts(null, query);
+        } else {
+            showHomePage();
+            loadFeaturedProducts();
+        }
+    }
 }
 
-// Checkout
-async function proceedToCheckout() {
-    if (!currentUser) {
-        alert('Please login to checkout');
-        showLogin();
-        return;
+// Event handlers setup
+function setupEventHandlers() {
+    // Auth modal events
+    const closeAuthBtn = document.getElementById('closeAuthBtn');
+    const authToggle = document.getElementById('authToggle');
+    const authForm = document.getElementById('authForm');
+    
+    if (closeAuthBtn) {
+        closeAuthBtn.onclick = hideAuthModal;
     }
     
-    if (!cart.items || cart.items.length === 0) {
-        alert('Your cart is empty');
-        return;
+    if (authToggle) {
+        authToggle.onclick = (e) => {
+            e.preventDefault();
+            isSignUpMode = !isSignUpMode;
+            showAuthModal();
+        };
     }
     
-    // In a real app, this would navigate to a checkout page
-    // For now, we'll just show an alert
-    alert('Checkout functionality is not fully implemented yet.');
-}
-
-// Form handlers
-function setupFormHandlers() {
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
+    if (authForm) {
+        authForm.onsubmit = async (e) => {
             e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            await login(email, password);
-        });
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            
+            if (isSignUpMode) {
+                const name = document.getElementById('nameInput').value;
+                await signup(name, email, password);
+            } else {
+                await login(email, password);
+            }
+        };
     }
-
-    const registerForm = document.getElementById('register-form');
-    if (registerForm) {
-        registerForm.addEventListener('submit', async (e) => {
+    
+    // Cart modal events
+    const cartBtn = document.getElementById('cartBtn');
+    const closeCartBtn = document.getElementById('closeCartBtn');
+    
+    if (cartBtn) {
+        cartBtn.onclick = showCartModal;
+    }
+    
+    if (closeCartBtn) {
+        closeCartBtn.onclick = hideCartModal;
+    }
+    
+    // Navigation events
+    const navLinks = document.querySelectorAll('.nav-link');
+    navLinks.forEach(link => {
+        link.onclick = (e) => {
             e.preventDefault();
-            const first_name = document.getElementById('register-firstname').value;
-            const last_name = document.getElementById('register-lastname').value;
-            const email = document.getElementById('register-email').value;
-            const password = document.getElementById('register-password').value;
-            await register({ first_name, last_name, email, password, user_type: 'parent' });
-        });
+            const page = link.dataset.page;
+            
+            if (page === 'home') {
+                showHomePage();
+                loadFeaturedProducts();
+            } else if (page === 'products') {
+                showProductsSection();
+                loadProducts();
+            }
+        };
+    });
+    
+    // Search events
+    const searchBtn = document.getElementById('searchBtn');
+    const searchInput = document.getElementById('searchInput');
+    
+    if (searchBtn) {
+        searchBtn.onclick = searchProducts;
     }
-
-    const loginTab = document.getElementById('login-tab');
-    const registerTab = document.getElementById('register-tab');
-    const loginFormContainer = document.getElementById('login-form-container');
-    const registerFormContainer = document.getElementById('register-form-container');
-
-    if (loginTab && registerTab) {
-        loginTab.addEventListener('click', () => {
-            loginTab.classList.add('border-green-600', 'text-green-600');
-            loginTab.classList.remove('text-gray-500', 'border-transparent');
-            registerTab.classList.remove('border-green-600', 'text-green-600');
-            registerTab.classList.add('text-gray-500', 'border-transparent');
-            loginFormContainer.classList.remove('hidden');
-            registerFormContainer.classList.add('hidden');
-        });
-
-        registerTab.addEventListener('click', () => {
-            registerTab.classList.add('border-green-600', 'text-green-600');
-            registerTab.classList.remove('text-gray-500', 'border-transparent');
-            loginTab.classList.remove('border-green-600', 'text-green-600');
-            loginTab.classList.add('text-gray-500', 'border-transparent');
-            registerFormContainer.classList.remove('hidden');
-            loginFormContainer.classList.add('hidden');
-        });
+    
+    if (searchInput) {
+        searchInput.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                searchProducts();
+            }
+        };
     }
+    
+    // Hero section buttons
+    const shopNowBtn = document.getElementById('shopNowBtn');
+    const uploadListBtn = document.getElementById('uploadListBtn');
+    
+    if (shopNowBtn) {
+        shopNowBtn.onclick = () => {
+            showProductsSection();
+            loadProducts();
+        };
+    }
+    
+    if (uploadListBtn) {
+        uploadListBtn.onclick = () => {
+            showNotification('School list upload feature coming soon!', 'info');
+        };
+    }
+    
+    // Checkout button
+    const checkoutBtn = document.getElementById('checkoutBtn');
+    if (checkoutBtn) {
+        checkoutBtn.onclick = () => {
+            if (!authToken) {
+                hideCartModal();
+                showAuthModal();
+                return;
+            }
+            
+            if (!cart.items || cart.items.length === 0) {
+                showNotification('Your cart is empty', 'error');
+                return;
+            }
+            
+            showNotification('Checkout feature coming soon!', 'info');
+        };
+    }
+    
+    // Close modals when clicking outside
+    document.addEventListener('click', (e) => {
+        const authModal = document.getElementById('authModal');
+        const cartModal = document.getElementById('cartModal');
+        
+        if (authModal && !authModal.classList.contains('hidden') && e.target === authModal) {
+            hideAuthModal();
+        }
+        
+        if (cartModal && !cartModal.classList.contains('hidden') && e.target === cartModal) {
+            hideCartModal();
+        }
+    });
 }

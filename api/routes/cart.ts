@@ -91,7 +91,7 @@ cart.post('/add', zValidator('json', addToCartSchema), async (c) => {
     // Check product availability
     const { data: product, error: productError } = await supabase
       .from('products')
-      .select('id, name, price, quantity, is_active')
+      .select('id, name, price, stock_quantity, is_active')
       .eq('id', productId)
       .single();
 
@@ -103,9 +103,9 @@ cart.post('/add', zValidator('json', addToCartSchema), async (c) => {
       return c.json({ error: 'Product is not available' }, 400);
     }
 
-    if (product.quantity < quantity) {
+    if (product.stock_quantity < quantity) {
       return c.json({ 
-        error: `Only ${product.quantity} items available in stock` 
+        error: `Only ${product.stock_quantity} items available in stock` 
       }, 400);
     }
 
@@ -121,9 +121,9 @@ cart.post('/add', zValidator('json', addToCartSchema), async (c) => {
       // Update quantity
       const newQuantity = existingItem.quantity + quantity;
       
-      if (product.quantity < newQuantity) {
+      if (product.stock_quantity < newQuantity) {
         return c.json({ 
-          error: `Cannot add more. Only ${product.quantity} items available` 
+          error: `Cannot add more. Only ${product.stock_quantity} items available` 
         }, 400);
       }
 
@@ -187,7 +187,7 @@ cart.put('/:itemId', zValidator('json', updateQuantitySchema), async (c) => {
     // Get cart item with product
     const { data: cartItem, error: fetchError } = await supabase
       .from('cart_items')
-      .select('*, products(quantity)')
+      .select('*, products(stock_quantity)')
       .eq('id', itemId)
       .eq('user_id', user.id)
       .single();
@@ -197,9 +197,9 @@ cart.put('/:itemId', zValidator('json', updateQuantitySchema), async (c) => {
     }
 
     // Check stock
-    if (cartItem.products.quantity < quantity) {
+    if (cartItem.products.stock_quantity < quantity) {
       return c.json({ 
-        error: `Only ${cartItem.products.quantity} items available` 
+        error: `Only ${cartItem.products.stock_quantity} items available` 
       }, 400);
     }
 
