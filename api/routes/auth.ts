@@ -10,10 +10,11 @@ const auth = new Hono();
 const signUpSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  name: z.string().min(2),
+  first_name: z.string().min(1),
+  last_name: z.string().min(1),
   phone: z.string().optional(),
-  schoolName: z.string().optional(),
-  role: z.enum(['parent', 'student', 'teacher']).default('parent')
+  school_id: z.string().uuid().optional(),
+  user_type: z.enum(['parent', 'student', 'teacher']).default('parent')
 });
 
 // Sign in schema
@@ -33,10 +34,9 @@ auth.post('/signup', zValidator('json', signUpSchema), async (c) => {
       password: data.password,
       options: {
         data: {
-          name: data.name,
-          phone: data.phone,
-          school_name: data.schoolName,
-          role: data.role
+          first_name: data.first_name,
+          last_name: data.last_name,
+          user_type: data.user_type,
         }
       }
     });
@@ -51,14 +51,15 @@ auth.post('/signup', zValidator('json', signUpSchema), async (c) => {
 
     // Create user profile in database
     const { error: profileError } = await supabase
-      .from('users')
+      .from('user_profiles')
       .insert({
         id: authData.user.id,
         email: data.email,
-        name: data.name,
+        first_name: data.first_name,
+        last_name: data.last_name,
         phone: data.phone,
-        school_name: data.schoolName,
-        role: data.role
+        school_id: data.school_id,
+        user_type: data.user_type
       });
 
     if (profileError) {
@@ -100,7 +101,7 @@ auth.post('/signin', zValidator('json', signInSchema), async (c) => {
 
     // Get user profile
     const { data: profile } = await supabase
-      .from('users')
+      .from('user_profiles')
       .select('*')
       .eq('id', data.user.id)
       .single();
@@ -173,7 +174,7 @@ auth.get('/me', async (c) => {
 
     // Get user profile
     const { data: profile } = await supabase
-      .from('users')
+      .from('user_profiles')
       .select('*')
       .eq('id', user.id)
       .single();
