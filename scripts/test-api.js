@@ -7,7 +7,7 @@
 
 const baseUrl = process.env.API_URL || 'http://localhost:3000';
 
-async function testEndpoint(method, path, body = null) {
+export async function testEndpoint(method, path, body = null) {
   const url = `${baseUrl}${path}`;
   const options = {
     method,
@@ -21,7 +21,10 @@ async function testEndpoint(method, path, body = null) {
   }
   
   try {
-    const response = await fetch(url);
+    // Pass the configured options so that the correct HTTP method and body
+    // are used during the request. Previously this function always performed
+    // a GET request regardless of the supplied method.
+    const response = await fetch(url, options);
     const data = await response.json();
     
     console.log(`✅ ${method} ${path}`);
@@ -39,7 +42,7 @@ async function testEndpoint(method, path, body = null) {
   }
 }
 
-async function runTests() {
+export async function runTests() {
   console.log('🧪 Testing Skooli API Endpoints');
   console.log('================================\n');
   
@@ -64,9 +67,7 @@ async function runTests() {
   console.log('✨ API tests completed!');
 }
 
-// Run tests if this file is executed directly
-if (require.main === module) {
+// Run tests if this file is executed directly (ESM equivalent of require.main)
+if (import.meta.url === new URL(process.argv[1], 'file:').href) {
   runTests().catch(console.error);
 }
-
-module.exports = { testEndpoint, runTests };
