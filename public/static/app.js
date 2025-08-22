@@ -1,4 +1,5 @@
 // Skooli E-commerce Frontend JavaScript
+// This file contains the main client-side logic for the application.
 
 // State management
 let cart = { items: [], summary: { total: 0, subtotal: 0, tax: 0, shipping: 0, itemCount: 0 } };

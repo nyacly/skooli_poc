@@ -77,19 +77,19 @@ app.get('/', (c) => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
                     <div class="flex items-center">
-                        <h1 class="text-2xl font-bold text-green-600">
+                        <a href="#" class="text-2xl font-bold text-green-600 nav-link" data-page="home">
                             <i class="fas fa-graduation-cap mr-2"></i>Skooli
-                        </h1>
+                        </a>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <a href="/" class="text-gray-700 hover:text-green-600">Shop</a>
+                        <a href="#" class="text-gray-700 hover:text-green-600 nav-link" data-page="products">Shop</a>
                         <a href="/school-lists" class="text-gray-700 hover:text-green-600">School Lists</a>
-                        <button onclick="openCart()" class="relative text-gray-700 hover:text-green-600">
+                        <button id="cartBtn" class="relative text-gray-700 hover:text-green-600">
                             <i class="fas fa-shopping-cart text-xl"></i>
-                            <span id="cart-count" class="absolute -top-2 -right-2 bg-orange-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">0</span>
+                            <span id="cartCount" class="absolute -top-2 -right-2 bg-orange-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">0</span>
                         </button>
-                        <button onclick="showLogin()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                            <i class="fas fa-user mr-2"></i>Login
+                        <button id="authBtn" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                            <i class="fas fa-user mr-2"></i><span id="authText">Sign In</span>
                         </button>
                     </div>
                 </div>
@@ -97,15 +97,15 @@ app.get('/', (c) => {
         </nav>
 
         <!-- Hero Section -->
-        <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white py-16">
+        <div id="heroSection" class="bg-gradient-to-r from-green-600 to-blue-600 text-white py-16">
             <div class="max-w-7xl mx-auto px-4 text-center">
                 <h2 class="text-4xl font-bold mb-4">Everything Your Child Needs for School</h2>
                 <p class="text-xl mb-8">Delivered Directly to Their Dorm!</p>
                 <div class="flex justify-center space-x-4">
-                    <button onclick="showUploadList()" class="bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 text-lg">
+                    <button id="uploadListBtn" class="bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 text-lg">
                         <i class="fas fa-upload mr-2"></i>Upload School List
                     </button>
-                    <button onclick="scrollToProducts()" class="bg-white text-green-600 px-6 py-3 rounded-lg hover:bg-gray-100 text-lg">
+                    <button id="shopNowBtn" class="bg-white text-green-600 px-6 py-3 rounded-lg hover:bg-gray-100 text-lg">
                         <i class="fas fa-shopping-bag mr-2"></i>Start Shopping
                     </button>
                 </div>
@@ -143,56 +143,74 @@ app.get('/', (c) => {
         </div>
 
         <!-- Categories -->
-        <div class="py-12 bg-gray-50">
+        <div class="py-12 bg-gray-50" id="categoriesSection">
             <div class="max-w-7xl mx-auto px-4">
                 <h3 class="text-3xl font-bold text-center mb-8">Shop by Category</h3>
-                <div id="categories" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div id="categoriesGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     <!-- Categories will be loaded here -->
                 </div>
             </div>
         </div>
 
-        <!-- Products Grid -->
-        <div id="products-section" class="py-12 bg-white">
+        <!-- Featured Products -->
+        <div class="py-12 bg-white" id="featuredSection">
             <div class="max-w-7xl mx-auto px-4">
-                <div class="flex justify-between items-center mb-8">
-                    <h3 class="text-3xl font-bold">Featured Products</h3>
+                <h3 class="text-3xl font-bold text-center mb-8">Featured Products</h3>
+                <div id="featuredGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Featured products will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- All Products Section -->
+        <div id="productsSection" class="py-12 bg-gray-50 hidden">
+            <div class="max-w-7xl mx-auto px-4">
+                 <div class="flex justify-between items-center mb-8">
+                    <h3 class="text-3xl font-bold">All Products</h3>
                     <div class="flex space-x-4">
-                        <input type="text" id="search-input" placeholder="Search products..." 
+                        <input type="text" id="searchInput" placeholder="Search products..."
                                class="px-4 py-2 border rounded-lg focus:outline-none focus:border-green-500">
-                        <button onclick="searchProducts()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                        <button id="searchBtn" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
                             <i class="fas fa-search"></i>
                         </button>
                     </div>
                 </div>
-                <div id="products" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <div id="productsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <!-- Products will be loaded here -->
                 </div>
             </div>
         </div>
 
         <!-- Shopping Cart Modal -->
-        <div id="cart-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-            <div class="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4">
+        <div id="cartModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+                <div class="p-6 border-b">
+                    <div class="flex justify-between items-center">
                         <h3 class="text-2xl font-bold">Shopping Cart</h3>
-                        <button onclick="closeCart()" class="text-gray-500 hover:text-gray-700">
+                        <button id="closeCartBtn" class="text-gray-500 hover:text-gray-700">
                             <i class="fas fa-times text-xl"></i>
                         </button>
                     </div>
-                    <div id="cart-items">
-                        <!-- Cart items will be loaded here -->
+                </div>
+                <div id="cartItems" class="p-6 overflow-y-auto">
+                    <!-- Cart items will be loaded here -->
+                </div>
+                <div class="p-6 border-t bg-gray-50">
+                    <div class="flex justify-between mb-2">
+                        <span>Subtotal</span>
+                        <span id="cartSubtotal">UGX 0</span>
                     </div>
-                    <div class="border-t pt-4 mt-4">
-                        <div class="flex justify-between text-xl font-bold">
-                            <span>Total:</span>
-                            <span id="cart-total">UGX 0</span>
-                        </div>
-                        <button onclick="proceedToCheckout()" class="w-full bg-green-600 text-white py-3 rounded-lg mt-4 hover:bg-green-700">
-                            Proceed to Checkout
-                        </button>
+                    <div class="flex justify-between mb-4">
+                        <span>Tax</span>
+                        <span id="cartTax">UGX 0</span>
                     </div>
+                    <div class="flex justify-between text-xl font-bold mb-4">
+                        <span>Total</span>
+                        <span id="cartTotal">UGX 0</span>
+                    </div>
+                    <button id="checkoutBtn" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
+                        Proceed to Checkout
+                    </button>
                 </div>
             </div>
         </div>
@@ -228,37 +246,29 @@ app.get('/', (c) => {
             </div>
         </div>
 
-        <!-- Login Modal -->
-        <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <!-- Auth Modal -->
+        <div id="authModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
             <div class="bg-white rounded-lg max-w-md w-full mx-4">
                 <div class="p-6">
-                    <div class="flex border-b mb-4">
-                        <button id="login-tab" class="flex-1 py-2 text-center font-semibold border-b-2 border-green-600 text-green-600">Login</button>
-                        <button id="register-tab" class="flex-1 py-2 text-center font-semibold text-gray-500">Register</button>
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 id="authTitle" class="text-2xl font-bold">Sign In</h3>
+                        <button id="closeAuthBtn" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
                     </div>
-                    <div id="login-form-container">
-                        <form id="login-form" class="space-y-4">
-                            <input type="email" id="login-email" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg">
-                            <input type="password" id="login-password" placeholder="Password" required class="w-full px-4 py-2 border rounded-lg">
-                            <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
-                                Login
-                            </button>
-                        </form>
-                    </div>
-                    <div id="register-form-container" class="hidden">
-                        <form id="register-form" class="space-y-4">
-                            <input type="text" id="register-firstname" placeholder="First Name" required class="w-full px-4 py-2 border rounded-lg">
-                            <input type="text" id="register-lastname" placeholder="Last Name" required class="w-full px-4 py-2 border rounded-lg">
-                            <input type="email" id="register-email" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg">
-                            <input type="password" id="register-password" placeholder="Password (min. 8 characters)" required class="w-full px-4 py-2 border rounded-lg">
-                            <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
-                                Register
-                            </button>
-                        </form>
-                    </div>
-                    <button onclick="closeLogin()" class="w-full bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 mt-4">
-                        Cancel
-                    </button>
+                    <form id="authForm" class="space-y-4">
+                        <div id="nameField" class="hidden">
+                            <input type="text" id="nameInput" placeholder="Full Name" class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <input type="email" id="emailInput" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg">
+                        <input type="password" id="passwordInput" placeholder="Password" required class="w-full px-4 py-2 border rounded-lg">
+                        <button id="authSubmitBtn" type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">
+                            Sign In
+                        </button>
+                    </form>
+                    <p class="text-center mt-4">
+                        <a href="#" id="authToggle" class="text-green-600 hover:underline">Don't have an account? Sign Up</a>
+                    </p>
                 </div>
             </div>
         </div>
@@ -315,25 +325,82 @@ app.get('/admin', (c) => {
                     </div>
                 </header>
                 <main class="flex-1 p-8">
-                    <h1 class="text-3xl font-bold mb-8">Dashboard</h1>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <div class="bg-white p-6 rounded-lg shadow">
-                            <h3 class="text-gray-600">Total Revenue</h3>
-                            <p class="text-3xl font-bold">UGX 12,345,678</p>
-                        </div>
-                        <div class="bg-white p-6 rounded-lg shadow">
-                            <h3 class="text-gray-600">Total Orders</h3>
-                            <p class="text-3xl font-bold">1,234</p>
-                        </div>
-                        <div class="bg-white p-6 rounded-lg shadow">
-                            <h3 class="text-gray-600">New Users</h3>
-                            <p class="text-3xl font-bold">56</p>
-                        </div>
-                        <div class="bg-white p-6 rounded-lg shadow">
-                            <h3 class="text-gray-600">Pending Orders</h3>
-                            <p class="text-3xl font-bold">12</p>
+                    <!-- Tabs -->
+                    <div class="mb-8 border-b border-gray-300">
+                        <nav class="flex space-x-8" aria-label="Tabs">
+                            <button id="tab-dashboard" class="tab-btn border-b-2 border-green-600 text-green-600 whitespace-nowrap pb-4 px-1 text-sm font-medium">Dashboard</button>
+                            <button id="tab-products" class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap pb-4 px-1 text-sm font-medium">Products</button>
+                            <button id="tab-orders" class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap pb-4 px-1 text-sm font-medium">Orders</button>
+                        </nav>
+                    </div>
+
+                    <!-- Dashboard Content -->
+                    <div id="content-dashboard" class="tab-content">
+                        <h1 class="text-3xl font-bold mb-8">Dashboard</h1>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div class="bg-white p-6 rounded-lg shadow">
+                                <h3 class="text-gray-600">Total Revenue</h3>
+                                <p id="stats-revenue" class="text-3xl font-bold">Loading...</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-lg shadow">
+                                <h3 class="text-gray-600">Total Orders</h3>
+                                <p id="stats-orders" class="text-3xl font-bold">Loading...</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-lg shadow">
+                                <h3 class="text-gray-600">New Users</h3>
+                                <p id="stats-users" class="text-3xl font-bold">Loading...</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-lg shadow">
+                                <h3 class="text-gray-600">Total Products</h3>
+                                <p id="stats-products" class="text-3xl font-bold">Loading...</p>
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Products Content -->
+                    <div id="content-products" class="tab-content hidden">
+                        <div class="flex justify-between items-center mb-8">
+                            <h1 class="text-3xl font-bold">Products</h1>
+                            <button id="addProductBtn" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Add Product</button>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr>
+                                        <th class="p-2">Name</th>
+                                        <th class="p-2">Price</th>
+                                        <th class="p-2">Stock</th>
+                                        <th class="p-2">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="products-table-body">
+                                    <!-- Product rows will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Orders Content -->
+                    <div id="content-orders" class="tab-content hidden">
+                        <h1 class="text-3xl font-bold mb-8">Orders</h1>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr>
+                                        <th class="p-2">Order ID</th>
+                                        <th class="p-2">Customer</th>
+                                        <th class="p-2">Total</th>
+                                        <th class="p-2">Status</th>
+                                        <th class="p-2">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orders-table-body">
+                                    <!-- Order rows will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </main>
             </div>
         </div>
