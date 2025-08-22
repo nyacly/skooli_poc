@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 // Import Supabase client for product queries. Node's ESM requires the .js extension
-import { supabase } from '../../lib/supabase.js';
+import { supabase, supabaseAdmin } from '../../lib/supabase.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { adminRequired } from '../middleware/auth.js';
 
 const products = new Hono();
 
@@ -194,35 +195,14 @@ const createProductSchema = z.object({
   is_active: z.boolean().default(true)
 });
 
-products.post('/', zValidator('json', createProductSchema), async (c) => {
+const updateProductSchema = createProductSchema.partial();
+
+products.post('/', adminRequired, zValidator('json', createProductSchema), async (c) => {
   try {
-    // Check admin authorization
-    const authorization = c.req.header('Authorization');
-    if (!authorization) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    const token = authorization.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      return c.json({ error: 'Admin access required' }, 403);
-    }
-
     const productData = c.req.valid('json');
+    const sbAdmin = supabaseAdmin();
 
-    const { data, error } = await supabase
+    const { data, error } = await sbAdmin
       .from('products')
       .insert(productData)
       .select()
@@ -241,36 +221,13 @@ products.post('/', zValidator('json', createProductSchema), async (c) => {
 });
 
 // Admin: Update product
-products.put('/:id', async (c) => {
+products.put('/:id', adminRequired, zValidator('json', updateProductSchema), async (c) => {
   try {
-    // Check admin authorization
-    const authorization = c.req.header('Authorization');
-    if (!authorization) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    const token = authorization.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      return c.json({ error: 'Admin access required' }, 403);
-    }
-
     const id = c.req.param('id');
-    const updates = await c.req.json();
+    const updates = c.req.valid('json');
+    const sbAdmin = supabaseAdmin();
 
-    const { data, error } = await supabase
+    const { data, error } = await sbAdmin
       .from('products')
       .update(updates)
       .eq('id', id)
@@ -290,36 +247,13 @@ products.put('/:id', async (c) => {
 });
 
 // Admin: Delete product
-products.delete('/:id', async (c) => {
+products.delete('/:id', adminRequired, async (c) => {
   try {
-    // Check admin authorization
-    const authorization = c.req.header('Authorization');
-    if (!authorization) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    const token = authorization.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      return c.json({ error: 'Admin access required' }, 403);
-    }
-
     const id = c.req.param('id');
+    const sbAdmin = supabaseAdmin();
 
     // Soft delete by setting is_active to false
-    const { error } = await supabase
+    const { error } = await sbAdmin
       .from('products')
       .update({ is_active: false })
       .eq('id', id);

@@ -15,10 +15,28 @@ const app = new Hono();
 
 // Middleware
 app.use('*', logger());
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173', // Common Vite dev port
+];
+if (process.env.VITE_APP_URL) {
+  allowedOrigins.push(process.env.VITE_APP_URL);
+}
+
 app.use('/api/*', cors({
-  origin: '*',
+  origin: (origin) => {
+    if (allowedOrigins.includes(origin)) {
+      return origin;
+    }
+    // For previews/tests, allow vercel.app domains
+    if (process.env.VERCEL_ENV !== 'production' && new URL(origin).hostname.endsWith('.vercel.app')) {
+      return origin;
+    }
+    return allowedOrigins[0]; // Default to a safe value
+  },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
 
 // API Routes
