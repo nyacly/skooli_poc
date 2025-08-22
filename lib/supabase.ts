@@ -2,17 +2,25 @@ import { createClient } from '@supabase/supabase-js';
 
 // These will be replaced with your actual Supabase project details
 // Support both Vercel and Vite-style environment variable names
+// Allow the application to start even when Supabase environment variables
+// are not provided. This is useful for local development or CI environments
+// where a real Supabase instance isn't available. In those cases we fall back
+// to harmless placeholder values which keep the client from throwing an error
+// at initialization time. Any actual Supabase calls will still fail at runtime
+// (which is fine for tests that don't exercise those paths).
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.SUPABASE_URL ||
   process.env.VITE_SUPABASE_URL ||
-  '';
+  'http://localhost';
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
-  '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  'anon-key';
+const supabaseServiceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  'service-role-key';
 
 // Client for browser/public operations
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
