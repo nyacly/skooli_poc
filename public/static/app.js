@@ -12,21 +12,14 @@ const API_BASE = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : '/api';
 document.addEventListener('DOMContentLoaded', async () => {
     await loadCategories();
     await loadProducts();
-    await loadSchools();
-    await loadCart();
-
+  
     if (authToken) {
         await checkAuth();
     }
+    await loadCart();
+    updateCartUI();
+    setupFormHandlers();
 
-    const authBtn = document.getElementById('authBtn');
-    if (authBtn) authBtn.onclick = showLogin;
-    const cartBtn = document.getElementById('cartBtn');
-    if (cartBtn) cartBtn.onclick = openCart;
-    const closeCartBtn = document.getElementById('closeCartBtn');
-    if (closeCartBtn) closeCartBtn.onclick = closeCart;
-    const closeAuthBtn = document.getElementById('closeAuthBtn');
-    if (closeAuthBtn) closeAuthBtn.onclick = closeLogin;
 });
 
 // Authentication
@@ -56,11 +49,49 @@ async function checkAuth() {
 }
 
 function updateAuthUI() {
-    const authBtn = document.getElementById('authBtn');
-    const authText = document.getElementById('authText');
-    if (authBtn && authText && currentUser) {
-        authText.textContent = currentUser.firstName;
-        authBtn.onclick = logout;
+    const loginBtn = document.querySelector('button[onclick="showLogin()"]');
+    const nav = loginBtn ? loginBtn.parentElement : null;
+
+    if (loginBtn && currentUser && currentUser.user.profile) {
+        // Update login button to show user name and a dropdown menu
+        loginBtn.innerHTML = `<i class="fas fa-user mr-2"></i>${currentUser.user.profile.first_name} <i class="fas fa-chevron-down ml-2"></i>`;
+
+        // Create dropdown menu
+        const dropdown = document.createElement('div');
+        dropdown.id = 'user-menu';
+        dropdown.className = 'hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50';
+
+        let menuItems = `
+            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">My Account</a>
+            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Order History</a>
+        `;
+
+        if (currentUser.user.profile.user_type === 'admin') {
+            menuItems += `<a href="/admin" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Admin Dashboard</a>`;
+        }
+
+        menuItems += `<button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100">Logout</button>`;
+
+        dropdown.innerHTML = menuItems;
+
+        // The user button will now toggle this menu
+        loginBtn.onclick = () => {
+            dropdown.classList.toggle('hidden');
+        };
+
+        // Add dropdown to nav
+        if (nav) {
+            nav.classList.add('relative'); // For positioning the dropdown
+            nav.appendChild(dropdown);
+        }
+
+    }
+}
+
+function showUserMenu() {
+    const menu = document.getElementById('user-menu');
+    if (menu) {
+        menu.classList.toggle('hidden');
     }
 }
 
@@ -76,12 +107,7 @@ async function login(email, password) {
 
         if (response.ok) {
             authToken = data.session.access_token;
-            currentUser = {
-                id: data.user.id,
-                email: data.user.email,
-                firstName: data.user.profile?.first_name || '',
-                lastName: data.user.profile?.last_name || ''
-            };
+            currentUser = data;
             localStorage.setItem('authToken', authToken);
             updateAuthUI();
             closeLogin();
@@ -96,6 +122,29 @@ async function login(email, password) {
     }
 }
 
+async function register(userData) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            // Switch to login tab after successful registration
+            document.getElementById('login-tab').click();
+        } else {
+            alert(data.error || 'Registration failed');
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        alert('Registration failed');
+    }
+}
+
 function logout() {
     authToken = null;
     currentUser = null;
@@ -107,15 +156,14 @@ function logout() {
 async function loadCategories() {
     try {
         const response = await fetch(`${API_BASE}/products/categories`);
-        const data = await response.json();
-
-        const container = document.getElementById('categoriesGrid');
-        if (container && data.categories) {
-            container.innerHTML = data.categories.map(cat => `
+        const { categories } = await response.json();
+        
+        const container = document.getElementById('categories');
+        if (container) {
+            container.innerHTML = categories.map(cat => `
                 <div onclick="filterByCategory('${cat.slug}')" class="bg-white p-4 rounded-lg shadow hover:shadow-lg cursor-pointer transition-shadow">
-                    <i class="fas ${cat.icon || 'fa-box'} text-3xl text-green-600 mb-2"></i>
+                    <i class="fas fa-box text-3xl text-green-600 mb-2"></i>
                     <h4 class="font-semibold">${cat.name}</h4>
-                    <p class="text-sm text-gray-600">${cat.description || ''}</p>
                 </div>
             `).join('');
         }
@@ -140,10 +188,10 @@ async function loadSchools() {
 }
 
 // Products
-async function loadProducts(categoryId = null, search = null) {
+async function loadProducts(category = null, search = null) {
     try {
         let url = `${API_BASE}/products?limit=20`;
-        if (categoryId) url += `&category=${categoryId}`;
+        if (category) url += `&category=${category}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
         
         const response = await fetch(url);
@@ -153,10 +201,9 @@ async function loadProducts(categoryId = null, search = null) {
         if (container) {
             container.innerHTML = data.products.map(product => `
                 <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-                    <img src="${product.image_url || '/static/placeholder.png'}" alt="${product.name}" class="w-full h-48 object-cover rounded-t-lg">
+                    <img src="${product.image_url || '/static/placeholder.svg'}" alt="${product.name}" class="w-full h-48 object-cover rounded-t-lg">
                     <div class="p-4">
                         <h4 class="font-semibold mb-2">${product.name}</h4>
-                        <p class="text-gray-600 text-sm mb-2">${product.description || ''}</p>
                         <div class="flex justify-between items-center">
                             <span class="text-xl font-bold text-green-600">UGX ${formatNumber(product.price)}</span>
                             <button onclick="addToCart('${product.id}')" class="bg-orange-500 text-white px-3 py-1 rounded hover:bg-orange-600">
@@ -174,12 +221,12 @@ async function loadProducts(categoryId = null, search = null) {
 
 // Cart functions
 async function loadCart() {
+    if (!authToken) return;
     try {
-        const headers = {};
-        if (authToken) {
-            headers['Authorization'] = `Bearer ${authToken}`;
-        }
-
+        const headers = {
+            'Authorization': `Bearer ${authToken}`
+        };
+        
         const response = await fetch(`${API_BASE}/cart`, { headers });
         const data = await response.json();
 
@@ -195,11 +242,16 @@ async function loadCart() {
 }
 
 async function addToCart(productId) {
+    if (!authToken) {
+        showLogin();
+        return;
+    }
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (authToken) {
-            headers['Authorization'] = `Bearer ${authToken}`;
-        }
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+        };
+        
 
         const response = await fetch(`${API_BASE}/cart/add`, {
             method: 'POST',
@@ -221,27 +273,26 @@ async function addToCart(productId) {
 }
 
 async function updateCartItem(itemId, quantity) {
+    if (quantity <= 0) {
+        await removeFromCart(itemId);
+        return;
+    }
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (authToken) {
-            headers['Authorization'] = `Bearer ${authToken}`;
-        }
-
-        let response;
-        if (quantity <= 0) {
-            response = await fetch(`${API_BASE}/cart/${itemId}`, {
-                method: 'DELETE',
-                headers
-            });
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+        };
+        
+        const response = await fetch(`${API_BASE}/cart/${itemId}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ quantity })
+        });
+        
+        if (response.ok) {
+            await loadCart();
         } else {
-            response = await fetch(`${API_BASE}/cart/${itemId}`, {
-                method: 'PUT',
-                headers,
-                body: JSON.stringify({ quantity })
-            });
-        }
 
-        if (!response.ok) {
             const data = await response.json();
             alert(data.error || 'Failed to update cart');
         }
@@ -252,6 +303,29 @@ async function updateCartItem(itemId, quantity) {
     }
 }
 
+async function removeFromCart(itemId) {
+    try {
+        const headers = {
+            'Authorization': `Bearer ${authToken}`
+        };
+
+        const response = await fetch(`${API_BASE}/cart/${itemId}`, {
+            method: 'DELETE',
+            headers
+        });
+
+        if (response.ok) {
+            await loadCart();
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Failed to remove item');
+        }
+    } catch (error) {
+        console.error('Failed to remove item:', error);
+    }
+}
+
+
 function updateCartUI() {
     // Update cart count
     const cartCount = document.getElementById('cartCount');
@@ -261,46 +335,37 @@ function updateCartUI() {
     }
     
     // Update cart modal
-    const cartItems = document.getElementById('cartItems');
-    if (cartItems) {
+    const cartItemsContainer = document.getElementById('cart-items');
+    if (cartItemsContainer) {
         if (cart.items && cart.items.length > 0) {
-            cartItems.innerHTML = cart.items.map(item => `
+            cartItemsContainer.innerHTML = cart.items.map(item => `
                 <div class="flex items-center justify-between py-2 border-b">
                     <div class="flex items-center">
-                        <img src="${item.products?.image_url || '/static/placeholder.png'}" alt="${item.products?.name}" class="w-12 h-12 object-cover rounded mr-4">
+                        <img src="${item.products.image_url || '/static/placeholder.svg'}" alt="${item.products.name}" class="w-12 h-12 object-cover rounded mr-4">
                         <div>
-                            <h5 class="font-semibold">${item.products?.name}</h5>
-                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.products?.price)}</p>
+                            <h5 class="font-semibold">${item.products.name}</h5>
+                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.products.price)}</p>
                         </div>
                     </div>
                     <div class="flex items-center">
                         <button onclick="updateCartItem('${item.id}', ${item.quantity - 1})" class="px-2 py-1 bg-gray-200 rounded">-</button>
                         <span class="mx-2">${item.quantity}</span>
                         <button onclick="updateCartItem('${item.id}', ${item.quantity + 1})" class="px-2 py-1 bg-gray-200 rounded">+</button>
-                        <button onclick="updateCartItem('${item.id}', 0)" class="ml-4 text-red-500">
+                        <button onclick="removeFromCart('${item.id}')" class="ml-4 text-red-500">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
             `).join('');
         } else {
-            cartItems.innerHTML = '<p class="text-center text-gray-500 py-4">Your cart is empty</p>';
+            cartItemsContainer.innerHTML = '<p class="text-center text-gray-500 py-4">Your cart is empty</p>';
         }
     }
 
     // Update total
-    const cartTotal = document.getElementById('cartTotal');
-    if (cartTotal) {
-        cartTotal.textContent = `UGX ${formatNumber(cart.summary?.total || 0)}`;
-    }
-
-    const cartSubtotal = document.getElementById('cartSubtotal');
-    if (cartSubtotal) {
-        cartSubtotal.textContent = `UGX ${formatNumber(cart.summary?.subtotal || 0)}`;
-    }
-    const cartTax = document.getElementById('cartTax');
-    if (cartTax) {
-        cartTax.textContent = `UGX ${formatNumber(cart.summary?.tax || 0)}`;
+    const cartTotal = document.getElementById('cart-total');
+    if (cartTotal && cart.summary) {
+        cartTotal.textContent = `UGX ${formatNumber(cart.summary.total || 0)}`;
     }
 }
 
@@ -357,8 +422,8 @@ function searchProducts() {
     }
 }
 
-function filterByCategory(categoryId) {
-    loadProducts(categoryId);
+function filterByCategory(category) {
+    loadProducts(category);
     scrollToProducts();
 }
 
@@ -380,149 +445,56 @@ async function proceedToCheckout() {
     }
     
     // In a real app, this would navigate to a checkout page
-    // For now, we'll create an order directly
-    try {
-        const response = await fetch(`${API_BASE}/orders/create`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({
-                shippingAddress: {
-                    name: currentUser.firstName + ' ' + currentUser.lastName,
-                    phone: '+256700000000',
-                    address: 'Kampala, Uganda'
-                }
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            closeCart();
-            alert(`Order created successfully! Order number: ${data.order.orderNumber}`);
-            
-            // Initiate payment
-            initiatePayment(data.order.id);
-        } else {
-            alert(data.error || 'Failed to create order');
-        }
-    } catch (error) {
-        console.error('Checkout error:', error);
-        alert('Failed to create order');
-    }
+    // For now, we'll just show an alert
+    alert('Checkout functionality is not fully implemented yet.');
 }
 
-// Payment
-async function initiatePayment(orderId) {
-    try {
-        const response = await fetch(`${API_BASE}/payments/initialize`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({
-                orderId,
-                method: 'momo'
-            })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            alert(data.message);
-
-            // Clear cart after successful order
-            await fetch(`${API_BASE}/cart`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                }
-            });
-
-            await loadCart();
-            updateCartUI();
-        } else {
-            alert(data.error || 'Payment failed');
-        }
-    } catch (error) {
-        console.error('Payment error:', error);
-        alert('Payment failed');
-    }
-}
-
-// File upload
-async function uploadList() {
-    const fileInput = document.getElementById('file-input');
-    const schoolSelect = document.getElementById('school-select');
-    
-    if (!fileInput.files[0]) {
-        alert('Please select a file');
-        return;
-    }
-    
-    if (!schoolSelect.value) {
-        alert('Please select a school');
-        return;
-    }
-    
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-    
-    reader.onload = async (e) => {
-        const fileContent = e.target.result;
-        
-        try {
-            const response = await fetch(`${API_BASE}/school-lists/upload`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify({
-                    schoolId: parseInt(schoolSelect.value),
-                    fileName: file.name,
-                    fileContent
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                alert(`Successfully parsed ${data.parsedItems.length} items with ${data.matchRate.toFixed(0)}% match rate`);
-                closeUploadModal();
-                
-                // Add matched items to cart
-                if (data.matchedProducts.length > 0) {
-                    for (const item of data.matchedProducts) {
-                        if (item.matched_product_id) {
-                            await addToCart(item.matched_product_id);
-                        }
-                    }
-                }
-            } else {
-                alert(data.error || 'Upload failed');
-            }
-        } catch (error) {
-            console.error('Upload error:', error);
-            alert('Upload failed');
-        }
-    };
-    
-    reader.readAsText(file);
-}
-
-// Login form handler
-document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('authForm');
+// Form handlers
+function setupFormHandlers() {
+    const loginForm = document.getElementById('login-form');
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('emailInput').value;
-            const password = document.getElementById('passwordInput').value;
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
             await login(email, password);
         });
     }
-});
+
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const first_name = document.getElementById('register-firstname').value;
+            const last_name = document.getElementById('register-lastname').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            await register({ first_name, last_name, email, password, user_type: 'parent' });
+        });
+    }
+
+    const loginTab = document.getElementById('login-tab');
+    const registerTab = document.getElementById('register-tab');
+    const loginFormContainer = document.getElementById('login-form-container');
+    const registerFormContainer = document.getElementById('register-form-container');
+
+    if (loginTab && registerTab) {
+        loginTab.addEventListener('click', () => {
+            loginTab.classList.add('border-green-600', 'text-green-600');
+            loginTab.classList.remove('text-gray-500', 'border-transparent');
+            registerTab.classList.remove('border-green-600', 'text-green-600');
+            registerTab.classList.add('text-gray-500', 'border-transparent');
+            loginFormContainer.classList.remove('hidden');
+            registerFormContainer.classList.add('hidden');
+        });
+
+        registerTab.addEventListener('click', () => {
+            registerTab.classList.add('border-green-600', 'text-green-600');
+            registerTab.classList.remove('text-gray-500', 'border-transparent');
+            loginTab.classList.remove('border-green-600', 'text-green-600');
+            loginTab.classList.add('text-gray-500', 'border-transparent');
+            registerFormContainer.classList.remove('hidden');
+            loginFormContainer.classList.add('hidden');
+        });
+    }
+}
