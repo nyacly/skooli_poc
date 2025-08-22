@@ -153,7 +153,7 @@ orders.post('/create', zValidator('json', createOrderSchema), async (c) => {
       const newQuantity = (item.products?.stock_quantity || 0) - item.quantity;
       await supabase
         .from('products')
-        .update({ quantity: newQuantity })
+        .update({ stock_quantity: newQuantity })
         .eq('id', item.product_id);
     }
 
@@ -331,14 +331,14 @@ orders.post('/:orderId/cancel', async (c) => {
       for (const item of orderItems) {
         const { data: product } = await supabase
           .from('products')
-          .select('quantity')
+          .select('stock_quantity')
           .eq('id', item.product_id)
           .single();
 
         if (product) {
           await supabase
             .from('products')
-            .update({ quantity: product.quantity + item.quantity })
+            .update({ stock_quantity: product.stock_quantity + item.quantity })
             .eq('id', item.product_id);
         }
       }

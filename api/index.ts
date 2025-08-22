@@ -15,27 +15,31 @@ const app = new Hono();
 
 // Middleware
 app.use('*', logger());
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173', // Common Vite dev port
-];
-if (process.env.VITE_APP_URL) {
-  allowedOrigins.push(process.env.VITE_APP_URL);
-}
 
 app.use('/api/*', cors({
   origin: (origin) => {
-    if (allowedOrigins.includes(origin)) {
+    // Allow all origins for now to debug, can be restricted later
+    console.log('CORS origin:', origin);
+    
+    // Allow localhost for development
+    if (!origin || origin.includes('localhost')) {
+      return origin || '*';
+    }
+    
+    // Allow vercel.app domains
+    if (origin.includes('.vercel.app')) {
       return origin;
     }
-    // For previews/tests, allow vercel.app domains
-    if (process.env.VERCEL_ENV !== 'production' && new URL(origin).hostname.endsWith('.vercel.app')) {
+    
+    // Allow configured app URL
+    if (process.env.VITE_APP_URL && origin === process.env.VITE_APP_URL) {
       return origin;
     }
-    return allowedOrigins[0]; // Default to a safe value
+    
+    return '*'; // Allow all for now
   },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true,
 }));
 
