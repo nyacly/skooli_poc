@@ -12,7 +12,7 @@ import orderRoutes from './routes/orders.js';
 import paymentRoutes from './routes/payments.js';
 import schoolRoutes from './routes/schools.js';
 
-const app = new Hono();
+export const app = new Hono();
 
 // Middleware
 app.use('*', logger());
@@ -26,6 +26,9 @@ if (process.env.VITE_APP_URL) {
 
 app.use('/api/*', cors({
   origin: (origin) => {
+    if (!origin) {
+      return allowedOrigins[0];
+    }
     if (allowedOrigins.includes(origin)) {
       return origin;
     }
