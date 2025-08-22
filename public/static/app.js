@@ -101,9 +101,9 @@ async function login(email, password) {
 
         if (response.ok) {
             authToken = data.session.access_token;
-            currentUser = data;
+            currentUser = data.user;
             localStorage.setItem('authToken', authToken);
-            updateAuthUI();
+            await checkAuth();
             closeLogin();
             await loadCart();
             updateCartUI();
@@ -303,7 +303,7 @@ function updateCartUI() {
     // Update cart count
     const cartCount = document.getElementById('cart-count');
     if (cartCount) {
-        const itemCount = cart.items ? cart.items.reduce((sum, item) => sum + item.quantity, 0) : 0;
+        const itemCount = cart.summary ? cart.summary.count : 0;
         cartCount.textContent = itemCount;
     }
     
@@ -314,17 +314,17 @@ function updateCartUI() {
             cartItemsContainer.innerHTML = cart.items.map(item => `
                 <div class="flex items-center justify-between py-2 border-b">
                     <div class="flex items-center">
-                        <img src="${item.products.image_url || '/static/placeholder.svg'}" alt="${item.products.name}" class="w-12 h-12 object-cover rounded mr-4">
+                        <img src="${item.image_url || '/static/placeholder.svg'}" alt="${item.name}" class="w-12 h-12 object-cover rounded mr-4">
                         <div>
-                            <h5 class="font-semibold">${item.products.name}</h5>
-                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.products.price)}</p>
+                            <h5 class="font-semibold">${item.name}</h5>
+                            <p class="text-sm text-gray-600">UGX ${formatNumber(item.price)}</p>
                         </div>
                     </div>
                     <div class="flex items-center">
-                        <button onclick="updateCartItem('${item.id}', ${item.quantity - 1})" class="px-2 py-1 bg-gray-200 rounded">-</button>
+                        <button onclick="updateCartItem('${item.productId}', ${item.quantity - 1})" class="px-2 py-1 bg-gray-200 rounded">-</button>
                         <span class="mx-2">${item.quantity}</span>
-                        <button onclick="updateCartItem('${item.id}', ${item.quantity + 1})" class="px-2 py-1 bg-gray-200 rounded">+</button>
-                        <button onclick="removeFromCart('${item.id}')" class="ml-4 text-red-500">
+                        <button onclick="updateCartItem('${item.productId}', ${item.quantity + 1})" class="px-2 py-1 bg-gray-200 rounded">+</button>
+                        <button onclick="removeFromCart('${item.productId}')" class="ml-4 text-red-500">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>

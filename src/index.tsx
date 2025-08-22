@@ -5,7 +5,7 @@ import { logger } from 'hono/logger';
 import { Bindings } from './types';
 
 // Import routes
-import authRoutes from './routes/auth-enhanced';
+import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import cartRoutes from './routes/cart';
 import orderRoutes from './routes/orders';
@@ -39,7 +39,7 @@ app.route('/api/admin', adminRoutes);
 app.route('/checkout', checkoutRoutes);
 
 // Health check
-app.get('/api/health', (c) => {
+app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
