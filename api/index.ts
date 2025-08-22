@@ -4,7 +4,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
 // Import Supabase-adapted routes
-// The .js extension is required for Node's ES module resolver in production
+// Explicit .js extensions ensure Node's ESM resolver finds the compiled files
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
 import cartRoutes from './routes/cart.js';
