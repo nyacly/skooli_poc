@@ -14,7 +14,8 @@ authRoutes.post('/signup', async (c) => {
       return c.json({ error: 'Email and password are required' }, 400);
     }
 
-    const { data, error } = await signUp(email, password, metadata);
+    const origin = new URL(c.req.url).origin;
+    const { data, error } = await signUp(email, password, metadata, origin);
 
     if (error) {
       return c.json({ error: error.message }, 400);
