@@ -184,4 +184,15 @@ adminRoutes.get('/inventory', requireAdmin, async (c) => {
   }
 });
 
+// Delete product
+adminRoutes.delete('/products/:id', requireAdmin, async (c) => {
+    try {
+        const productId = c.req.param('id');
+        await c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(productId).run();
+        return c.json({ success: true });
+    } catch (error: any) {
+        return c.json({ error: error.message }, 500);
+    }
+});
+
 export default adminRoutes;
