@@ -61,7 +61,13 @@ export async function runTests() {
   await testEndpoint('POST', '/api/auth/signup', {
     email: 'test@example.com',
     password: 'testpass123',
-    name: 'Test User'
+    first_name: 'Test',
+    last_name: 'User'
+  });
+
+  await testEndpoint('POST', '/api/auth/signin', {
+    email: 'test@example.com',
+    password: 'testpass123'
   });
   
   console.log('✨ API tests completed!');
