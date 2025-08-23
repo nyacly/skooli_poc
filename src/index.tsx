@@ -404,6 +404,43 @@ app.get('/admin', (c) => {
                 </main>
             </div>
         </div>
+
+        <!-- Product Modal -->
+        <div id="product-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <form id="product-form" class="p-6">
+                    <h3 id="product-modal-title" class="text-2xl font-bold mb-4">Add Product</h3>
+                    <input type="hidden" id="product-id">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="product-name" class="block text-sm font-medium text-gray-700">Name</label>
+                            <input type="text" id="product-name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        </div>
+                        <div>
+                            <label for="product-sku" class="block text-sm font-medium text-gray-700">SKU</label>
+                            <input type="text" id="product-sku" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        </div>
+                        <div>
+                            <label for="product-price" class="block text-sm font-medium text-gray-700">Price</label>
+                            <input type="number" id="product-price" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        </div>
+                        <div>
+                            <label for="product-stock" class="block text-sm font-medium text-gray-700">Stock Quantity</label>
+                            <input type="number" id="product-stock" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="product-description" class="block text-sm font-medium text-gray-700">Description</label>
+                            <textarea id="product-description" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex justify-end space-x-2">
+                        <button type="button" id="cancel-product-modal" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300">Cancel</button>
+                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Save Product</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <script src="/static/admin.js"></script>
     </body>
     </html>

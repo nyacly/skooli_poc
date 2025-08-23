@@ -177,7 +177,7 @@ async function loadCategories() {
 async function loadFeaturedProducts() {
     try {
         console.log('Loading featured products...');
-        const response = await fetch(`${API_BASE}/products/featured`);
+        const response = await fetch(`${API_BASE}/products?featured=true`);
         
         if (!response.ok) {
             // If featured endpoint doesn't exist, load regular products

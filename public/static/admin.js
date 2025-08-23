@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadDashboard(data.user);
             setupTabs();
             loadDashboardStats();
+            setupProductModal();
         } else {
             alert('You do not have permission to view this page.');
             window.location.href = '/';
@@ -35,6 +36,91 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+function setupProductModal() {
+    const addProductBtn = document.getElementById('addProductBtn');
+    const productModal = document.getElementById('product-modal');
+    const cancelProductModalBtn = document.getElementById('cancel-product-modal');
+    const productForm = document.getElementById('product-form');
+
+    addProductBtn.addEventListener('click', () => {
+        productModal.classList.remove('hidden');
+        document.getElementById('product-modal-title').textContent = 'Add Product';
+        productForm.reset();
+        document.getElementById('product-id').value = '';
+    });
+
+    cancelProductModalBtn.addEventListener('click', () => {
+        productModal.classList.add('hidden');
+    });
+
+    productForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const product = {
+            name: document.getElementById('product-name').value,
+            sku: document.getElementById('product-sku').value,
+            price: parseFloat(document.getElementById('product-price').value),
+            stock_quantity: parseInt(document.getElementById('product-stock').value),
+            description: document.getElementById('product-description').value,
+        };
+        const productId = document.getElementById('product-id').value;
+
+        if (productId) {
+            await updateProduct(productId, product);
+        } else {
+            await createProduct(product);
+        }
+
+        productModal.classList.add('hidden');
+        loadProducts();
+    });
+}
+
+async function createProduct(product) {
+    await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify(product)
+    });
+}
+
+async function updateProduct(productId, product) {
+    await fetch(`/api/admin/products/${productId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify(product)
+    });
+}
+
+function editProduct(id, name, sku, price, stock, description) {
+    const productModal = document.getElementById('product-modal');
+    productModal.classList.remove('hidden');
+    document.getElementById('product-modal-title').textContent = 'Edit Product';
+    document.getElementById('product-id').value = id;
+    document.getElementById('product-name').value = name;
+    document.getElementById('product-sku').value = sku;
+    document.getElementById('product-price').value = price;
+    document.getElementById('product-stock').value = stock;
+    document.getElementById('product-description').value = description;
+}
+
+async function deleteProduct(productId) {
+    if (confirm('Are you sure you want to delete this product?')) {
+        await fetch(`/api/admin/products/${productId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            }
+        });
+        loadProducts();
+    }
+}
 
 function loadDashboard(user) {
     const adminUserContainer = document.getElementById('admin-user');
@@ -107,8 +193,8 @@ async function loadProducts() {
             <td class="p-2">UGX ${p.price.toLocaleString()}</td>
             <td class="p-2">${p.stock_quantity}</td>
             <td class="p-2">
-                <button class="text-blue-500 hover:underline">Edit</button>
-                <button class="text-red-500 hover:underline ml-2">Delete</button>
+                <button onclick="editProduct('${p.id}', '${p.name}', '${p.sku}', ${p.price}, ${p.stock_quantity}, '${p.description}')" class="text-blue-500 hover:underline">Edit</button>
+                <button onclick="deleteProduct('${p.id}')" class="text-red-500 hover:underline ml-2">Delete</button>
             </td>
         </tr>
     `).join('');

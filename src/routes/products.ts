@@ -7,7 +7,7 @@ const productRoutes = new Hono<{ Bindings: Bindings }>();
 // Get all products with optional filters
 productRoutes.get('/', async (c) => {
   try {
-    const categoryId = c.req.query('category');
+    const categorySlug = c.req.query('category');
     const search = c.req.query('search');
     const featured = c.req.query('featured');
     const page = parseInt(c.req.query('page') || '1');
@@ -16,8 +16,14 @@ productRoutes.get('/', async (c) => {
 
     let query = supabase.from('products').select('*', { count: 'exact' }).eq('is_active', true);
 
-    if (categoryId) {
-      query = query.eq('category_id', categoryId);
+    if (categorySlug) {
+      const { data: category } = await supabase.from('categories').select('id').eq('slug', categorySlug).single();
+      if (category) {
+        query = query.eq('category_id', category.id);
+      } else {
+        // Category not found, return empty array
+        return c.json({ products: [], pagination: { page, limit, total: 0, pages: 1 } });
+      }
     }
 
     if (search) {
