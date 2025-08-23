@@ -166,16 +166,22 @@ const getURL = () => {
 };
 
 // Helper functions
-export async function signUp(email: string, password: string, metadata: any) {
+export async function signUp(
+  email: string,
+  password: string,
+  metadata: any,
+  baseUrl?: string
+) {
+  const redirectBase = baseUrl || getURL();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: metadata,
-      emailRedirectTo: `${getURL()}/auth/callback`,
+      emailRedirectTo: `${redirectBase}/auth/callback`,
     },
   });
-  
+
   return { data, error };
 }
 

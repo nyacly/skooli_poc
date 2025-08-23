@@ -232,8 +232,11 @@ async function loadProducts(category = null, search = null) {
         const data = await response.json();
         console.log('Products loaded:', data);
         
-        // Show products in featured grid if on home page, otherwise in products grid
-        const container = document.getElementById('featuredGrid') || document.getElementById('productsGrid');
+        // Prefer products grid when available, otherwise fall back to featured grid
+        let container = document.getElementById('productsGrid');
+        if (!container) {
+            container = document.getElementById('featuredGrid');
+        }
         if (container && data.products) {
             container.innerHTML = data.products.map(product => `
                 <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
@@ -533,6 +536,20 @@ function showProductsSection() {
     currentPage = 'products';
 }
 
+function showCategoriesSection() {
+    const heroSection = document.getElementById('heroSection');
+    const categoriesSection = document.getElementById('categoriesSection');
+    const featuredSection = document.getElementById('featuredSection');
+    const productsSection = document.getElementById('productsSection');
+
+    if (heroSection) heroSection.classList.add('hidden');
+    if (featuredSection) featuredSection.classList.add('hidden');
+    if (productsSection) productsSection.classList.add('hidden');
+    if (categoriesSection) categoriesSection.classList.remove('hidden');
+
+    currentPage = 'categories';
+}
+
 function showHomePage() {
     const heroSection = document.getElementById('heroSection');
     const categoriesSection = document.getElementById('categoriesSection');
@@ -623,6 +640,9 @@ function setupEventHandlers() {
             } else if (page === 'products') {
                 showProductsSection();
                 loadProducts();
+            } else if (page === 'categories') {
+                showCategoriesSection();
+                loadCategories();
             }
         };
     });
